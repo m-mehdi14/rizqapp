@@ -1,0 +1,68 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id              String  @id @default(uuid()) @db.Uuid
+  wallet_address  String  @unique
+  username        String?
+  expo_push_token String?
+  fcm_token       String?
+
+  goals    Goal[]
+  coaching CoachingMessage[]
+
+  @@map("users")
+}
+
+model Goal {
+  id                         String    @id @default(uuid()) @db.Uuid
+  owner                      String    @db.Uuid
+  pda_address                String
+  goal_name                  String
+  goal_type                  String
+  target_usdc                Int
+  current_usdc               Int?
+  deadline                   DateTime
+  historical_completion_rate Float?
+  yes_count                  Int?
+  no_count                   Int?
+  last_week_deposit          Int?
+  is_resolved                Boolean?
+
+  ownerUser         User             @relation(fields: [owner], references: [id])
+  stakes            Stake[]
+  coaching_messages CoachingMessage[]
+
+  @@map("goals")
+}
+
+model Stake {
+  id            String  @id @default(uuid()) @db.Uuid
+  goal_id      String  @db.Uuid
+  staker_wallet String
+  amount_usdc  Int
+  is_yes       Boolean
+  tx_signature String
+
+  goal Goal @relation(fields: [goal_id], references: [id])
+
+  @@map("stakes")
+}
+
+model CoachingMessage {
+  id         String   @id @default(uuid()) @db.Uuid
+  goal_id    String   @db.Uuid
+  user_id    String   @db.Uuid
+  message    String
+  created_at DateTime
+
+  goal Goal @relation(fields: [goal_id], references: [id])
+  user User @relation(fields: [user_id], references: [id])
+
+  @@map("coaching_messages")
+}

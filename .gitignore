@@ -1,0 +1,36 @@
+node_modules/
+dist/
+build/
+target/
+.anchor/
+.turbo/
+.cache/
+coverage/
+*.log
+.DS_Store
+.cursor/
+**/.bundle/
+*.keystore
+
+# Env / secrets
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# React Native
+**/android/.gradle/
+**/android/build/
+**/android/app/build/
+**/ios/Pods/
+**/ios/build/
+**/ios/DerivedData/
+
+# Backend / Prisma
+**/.prisma/
+**/prisma/migrations/
+
+# Solana / Anchor artifacts
+**/test-ledger/
+**/target/deploy/*.json
+**/target/deploy/*.so

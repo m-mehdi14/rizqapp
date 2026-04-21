@@ -1,0 +1,4 @@
+[toolchain]
+# Match `cargo generate-lockfile` / modern crates; use Solana 3.x CLI for build-sbf.
+channel = "1.87.0"
+components = ["rustfmt", "clippy"]

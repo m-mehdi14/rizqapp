@@ -1,0 +1,23 @@
+[package]
+name = "payout"
+version = "0.1.0"
+description = "Rizq payout program (delegates to prediction_pool::resolve_pool)"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "payout"
+
+[features]
+no-entrypoint = []
+no-idl = []
+no-log-ix-name = []
+cpi = ["no-entrypoint"]
+idl-build = ["anchor-lang/idl-build", "anchor-spl/idl-build"]
+default = []
+
+[dependencies]
+anchor-lang = "0.31.1"
+anchor-spl = "0.31.1"
+prediction_pool = { path = "../prediction_pool", features = ["cpi"] }
+savings_goal = { path = "../savings_goal", features = ["cpi"] }
