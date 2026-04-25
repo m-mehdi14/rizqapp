@@ -99,6 +99,11 @@ function readParamsFromUrl(url: string): URLSearchParams {
   }
 }
 
+function isRizqDeepLink(url: string | null | undefined): boolean {
+  if (!url) return false;
+  return /^rizq:/i.test(url);
+}
+
 async function restorePhantomSessionFromStorage(
   setWallet: (wallet: string, provider?: "phantom" | "embedded" | null) => void
 ) {
@@ -140,12 +145,22 @@ async function persistPhantomSessionToStorage() {
   }
 }
 
+async function openPhantomDeepLinkWithFallback(nativeUrl: string, universalUrl: string): Promise<void> {
+  try {
+    // Try Phantom app scheme first; this is more reliable for Android APK installs.
+    await Linking.openURL(nativeUrl);
+    return;
+  } catch {
+    await Linking.openURL(universalUrl);
+  }
+}
+
 function tryHandlePhantomCallback(
   url: string,
   setWallet: (wallet: string, provider?: "phantom" | "embedded" | null) => void,
   dappKeyPair: nacl.BoxKeyPair
 ): string | null {
-  if (!url.startsWith("rizq://")) return null;
+  if (!isRizqDeepLink(url)) return null;
   const params = readParamsFromUrl(url);
   const phantomPk = params.get("phantom_encryption_public_key");
   if (phantomPk) {
@@ -268,7 +283,7 @@ export function usePhantomWallet() {
       };
 
       const processCallbackUrl = (url: string | null | undefined) => {
-        if (!url || !url.startsWith("rizq://")) return;
+        if (!isRizqDeepLink(url)) return;
         const walletPk = tryHandlePhantomCallback(url, setWallet, dappKeyPair);
         if (walletPk) {
           settleSuccess(walletPk);
@@ -294,16 +309,11 @@ export function usePhantomWallet() {
 
       (async () => {
         try {
-          // Keep old working behavior: universal link first for stable return callback handling.
-          await Linking.openURL(phantomUniversalUrl);
+          // Prefer Phantom native deep-link on Android; fallback to universal link.
+          await openPhantomDeepLinkWithFallback(phantomNativeUrl, phantomUniversalUrl);
           return;
         } catch {
-          try {
-            await Linking.openURL(phantomNativeUrl);
-            return;
-          } catch {
-            settleError("Could not open Phantom app on this device.");
-          }
+          settleError("Could not open Phantom app on this device.");
         }
       })().catch(() => settleError("Could not start Phantom connection."));
     });
@@ -351,8 +361,10 @@ export function usePhantomWallet() {
         payload: encrypted.data,
         cluster: "devnet",
       });
-      const url = `${PHANTOM_UNIVERSAL}/signAndSendTransaction?${params.toString()}`;
-      await Linking.openURL(url);
+      const query = params.toString();
+      const phantomUniversalUrl = `${PHANTOM_UNIVERSAL}/signAndSendTransaction?${query}`;
+      const phantomNativeUrl = `phantom://v1/signAndSendTransaction?${query}`;
+      await openPhantomDeepLinkWithFallback(phantomNativeUrl, phantomUniversalUrl);
 
       const signature = await new Promise<string>((resolve, reject) => {
         let settled = false;
@@ -368,7 +380,9 @@ export function usePhantomWallet() {
           try {
             if (
               !event.url.startsWith("rizq://onSignAndSendTransaction") &&
-              !event.url.startsWith("rizq://onSignAndSend")
+              !event.url.startsWith("rizq://onSignAndSend") &&
+              !event.url.startsWith("rizq:/onSignAndSendTransaction") &&
+              !event.url.startsWith("rizq:/onSignAndSend")
             ) {
               return;
             }
@@ -411,7 +425,9 @@ export function usePhantomWallet() {
               if (!initialUrl) return;
               if (
                 !initialUrl.startsWith("rizq://onSignAndSendTransaction") &&
-                !initialUrl.startsWith("rizq://onSignAndSend")
+                !initialUrl.startsWith("rizq://onSignAndSend") &&
+                !initialUrl.startsWith("rizq:/onSignAndSendTransaction") &&
+                !initialUrl.startsWith("rizq:/onSignAndSend")
               ) {
                 return;
               }

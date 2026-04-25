@@ -118,8 +118,8 @@ export function HomeScreen() {
       if (!walletAddress) {
         setWalletError("Unable to connect Web3Auth wallet right now.");
       }
-    } catch {
-      setWalletError("Unable to connect Web3Auth wallet. Please try again.");
+    } catch (error) {
+      setWalletError(error instanceof Error ? error.message : "Unable to connect Web3Auth wallet. Please try again.");
     } finally {
       setIsConnectingEmbedded(false);
     }
@@ -178,7 +178,7 @@ export function HomeScreen() {
                 </Pressable>
                 {!web3AuthConfigured ? (
                   <Text style={styles.walletHintText}>
-                    Add `RIZQ_WEB3AUTH_CLIENT_ID` in `rizq-app/.env` (from Web3Auth dashboard).
+                    Add `RIZQ_WEB3AUTH_CLIENT_ID` and `RIZQ_WEB3AUTH_REDIRECT_URL` in `rizq-app/.env`.
                   </Text>
                 ) : null}
                 {walletError ? <Text style={styles.walletErrorText}>{walletError}</Text> : null}

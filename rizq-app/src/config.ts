@@ -13,7 +13,7 @@ export const SOLANA_RPC_URL = RIZQ_SOLANA_RPC_URL ?? "https://api.devnet.solana.
 export const USDC_MINT = RIZQ_USDC_MINT ?? "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU";
 export const DAPP_URL = RIZQ_DAPP_URL ?? "https://rizq.app";
 export const WEB3AUTH_CLIENT_ID = RIZQ_WEB3AUTH_CLIENT_ID ?? "";
-export const WEB3AUTH_REDIRECT_URL = RIZQ_WEB3AUTH_REDIRECT_URL ?? "rizq://auth";
+export const WEB3AUTH_REDIRECT_URL = RIZQ_WEB3AUTH_REDIRECT_URL ?? "com.rizqapp://auth";
 
 // Backward-compatible exports for existing imports.
 export const SUPABASE_URL = "";

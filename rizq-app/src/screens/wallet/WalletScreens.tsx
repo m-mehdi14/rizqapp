@@ -174,8 +174,8 @@ export function WalletMainScreen() {
             try {
               setConnectError(null);
               await connectWeb3AuthWallet();
-            } catch {
-              setConnectError("Unable to connect Web3Auth.");
+            } catch (error) {
+              setConnectError(error instanceof Error ? error.message : "Unable to connect Web3Auth.");
             }
           }}
         >

@@ -19,6 +19,7 @@ const chainConfig = {
 };
 
 let web3auth: Web3Auth | null = null;
+let web3authRedirectUrl: string | null = null;
 const web3AuthStorage = {
   setItem: async (key: string, value: string) => {
     await AsyncStorage.setItem(key, value);
@@ -33,8 +34,8 @@ const web3AuthStorage = {
   },
 };
 
-async function getWeb3AuthClient() {
-  if (web3auth) return web3auth;
+async function getWeb3AuthClient(redirectUrl: string) {
+  if (web3auth && web3authRedirectUrl === redirectUrl) return web3auth;
   const privateKeyProvider = new SolanaPrivateKeyProvider({
     config: {
       chainConfig,
@@ -43,10 +44,11 @@ async function getWeb3AuthClient() {
   web3auth = new Web3Auth(WebBrowser, web3AuthStorage, {
     clientId: WEB3AUTH_CLIENT_ID,
     network: WEB3AUTH_NETWORK.SAPPHIRE_DEVNET,
-    redirectUrl: WEB3AUTH_REDIRECT_URL,
+    redirectUrl,
     privateKeyProvider,
   });
   await web3auth.init();
+  web3authRedirectUrl = redirectUrl;
   return web3auth;
 }
 
@@ -56,25 +58,56 @@ export function useWeb3AuthWallet() {
   const walletProvider = useAppStore((s) => s.walletProvider);
 
   const isConfigured = WEB3AUTH_CLIENT_ID.trim().length > 0;
+  const hasValidRedirect = WEB3AUTH_REDIRECT_URL.includes("://");
+
+  const getRedirectCandidates = useCallback((): string[] => {
+    const configured = WEB3AUTH_REDIRECT_URL.trim();
+    const candidates: string[] = [];
+    if (configured.includes("://")) {
+      candidates.push(configured);
+    }
+    // Keep compatibility with both configured schemes across APK builds.
+    const defaults = ["com.rizqapp://auth", "rizq://auth"];
+    defaults.forEach((value) => {
+      if (!candidates.includes(value)) {
+        candidates.push(value);
+      }
+    });
+    return candidates;
+  }, []);
 
   const connectWeb3AuthWallet = useCallback(async () => {
     if (!isConfigured) {
       throw new Error("Web3Auth is not configured. Add RIZQ_WEB3AUTH_CLIENT_ID in app env.");
     }
-    const client = await getWeb3AuthClient();
-    const provider = await client.login({
-      loginProvider: LOGIN_PROVIDER.GOOGLE,
-      redirectUrl: WEB3AUTH_REDIRECT_URL,
-      curve: "ed25519",
-    });
-    if (!provider) throw new Error("Web3Auth login was cancelled.");
-    const solanaWallet = new SolanaWallet(provider);
-    const accounts = await solanaWallet.requestAccounts();
-    const address = accounts[0];
-    if (!address) throw new Error("No wallet account received from Web3Auth.");
-    setWalletConnection(address, "embedded");
-    return address;
-  }, [isConfigured, setWalletConnection]);
+    if (!hasValidRedirect) {
+      throw new Error("Web3Auth redirect URL is invalid. Set RIZQ_WEB3AUTH_REDIRECT_URL like com.rizqapp://auth.");
+    }
+    const redirectCandidates = getRedirectCandidates();
+    let lastError = "unknown";
+    for (const redirectUrl of redirectCandidates) {
+      try {
+        const client = await getWeb3AuthClient(redirectUrl);
+        const provider = await client.login({
+          loginProvider: LOGIN_PROVIDER.GOOGLE,
+          redirectUrl,
+          curve: "ed25519",
+        });
+        if (!provider) continue;
+        const solanaWallet = new SolanaWallet(provider);
+        const accounts = await solanaWallet.requestAccounts();
+        const address = accounts[0];
+        if (!address) throw new Error("No wallet account received from Web3Auth.");
+        setWalletConnection(address, "embedded");
+        return address;
+      } catch (error) {
+        lastError = error instanceof Error ? error.message : "unknown";
+      }
+    }
+    throw new Error(
+      `Web3Auth login failed (${lastError}). Add these redirect URLs in Web3Auth dashboard: com.rizqapp://auth and rizq://auth`
+    );
+  }, [getRedirectCandidates, hasValidRedirect, isConfigured, setWalletConnection]);
 
   const logoutWeb3AuthWallet = useCallback(async () => {
     if (web3auth) {
@@ -90,7 +123,10 @@ export function useWeb3AuthWallet() {
       if (!isConfigured) {
         throw new Error("Web3Auth is not configured.");
       }
-      const client = await getWeb3AuthClient();
+      if (!hasValidRedirect) {
+        throw new Error("Web3Auth redirect URL is invalid.");
+      }
+      const client = await getWeb3AuthClient(getRedirectCandidates()[0] ?? "com.rizqapp://auth");
       if (!client.provider) {
         throw new Error("Web3Auth wallet session expired. Please reconnect.");
       }
@@ -121,7 +157,7 @@ export function useWeb3AuthWallet() {
       );
       return signature;
     },
-    [isConfigured]
+    [getRedirectCandidates, hasValidRedirect, isConfigured]
   );
 
   return useMemo(

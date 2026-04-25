@@ -661,14 +661,18 @@ export function Onboarding10WalletSetupScreen() {
         onPress={() => {
           if (connectingEmbedded) return;
           if (!web3AuthConfigured) {
-            setErrorMessage("Web3Auth is not configured. Set RIZQ_WEB3AUTH_CLIENT_ID.");
+            setErrorMessage("Web3Auth is not configured. Set RIZQ_WEB3AUTH_CLIENT_ID and RIZQ_WEB3AUTH_REDIRECT_URL.");
             return;
           }
           setConnectingEmbedded(true);
           setErrorMessage(null);
           connectWeb3AuthWallet()
             .then(() => undefined)
-            .catch(() => setErrorMessage("Unable to connect Web3Auth wallet right now."))
+            .catch((error) =>
+              setErrorMessage(
+                error instanceof Error ? error.message : "Unable to connect Web3Auth wallet right now."
+              )
+            )
             .finally(() => setConnectingEmbedded(false));
         }}
       />
