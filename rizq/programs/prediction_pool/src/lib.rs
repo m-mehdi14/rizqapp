@@ -1,19 +1,23 @@
 use anchor_lang::prelude::*;
-use anchor_lang::AccountDeserialize;
 use anchor_spl::token::{transfer, Mint, Token, TokenAccount, Transfer};
 use savings_goal::program::SavingsGoal as SavingsGoalProgram;
 use savings_goal::{self, SavingsGoal};
 
 declare_id!("BT3W76giGrD5PkR55UE78KPdxpHFWp8a5iHZgzBvLQJK");
 
-pub const MIN_STAKE: u64 = 1_000_000;
-pub const MAX_STAKERS_PER_SIDE: usize = 50;
+pub const MIN_CONTRIBUTION: u64 = 5_000_000; // 5 USDC
+pub const MAX_MEMBERS: usize = 50;
 
 #[program]
 pub mod prediction_pool {
     use super::*;
 
-    pub fn create_pool(ctx: Context<CreatePool>) -> Result<()> {
+    /// Initializes a committee pool linked to a savings goal PDA.
+    pub fn create_pool(
+        ctx: Context<CreatePool>,
+        contribution_amount: u64,
+        total_cycles: u16,
+    ) -> Result<()> {
         let goal = &ctx.accounts.savings_goal;
         require!(
             goal.prediction_pool == Pubkey::default(),
@@ -23,6 +27,11 @@ pub mod prediction_pool {
             ctx.accounts.owner.key() == goal.owner,
             ErrorCode::Unauthorized
         );
+        require!(
+            contribution_amount >= MIN_CONTRIBUTION,
+            ErrorCode::MinContributionNotMet
+        );
+        require!(total_cycles > 0, ErrorCode::InvalidCycleConfig);
 
         let savings_goal_ai = ctx.accounts.savings_goal.to_account_info();
         let owner_ai = ctx.accounts.owner.to_account_info();
@@ -31,10 +40,11 @@ pub mod prediction_pool {
 
         let pool = &mut ctx.accounts.pool;
         pool.goal = goal.key();
-        pool.yes_stakers = Vec::new();
-        pool.no_stakers = Vec::new();
-        pool.total_yes = 0;
-        pool.total_no = 0;
+        pool.members = Vec::new();
+        pool.contribution_amount = contribution_amount;
+        pool.current_cycle = 0;
+        pool.total_cycles = total_cycles;
+        pool.pool_balance = 0;
         pool.is_resolved = false;
         pool.vault = ctx.accounts.vault.key();
         pool.bump = ctx.bumps.pool;
@@ -47,200 +57,176 @@ pub mod prediction_pool {
         let cpi_ctx = CpiContext::new(savings_goal_program_ai, cpi_accounts);
         savings_goal::cpi::link_prediction_pool(cpi_ctx)?;
 
-        emit!(PoolCreated {
+        emit!(CommitteePoolCreated {
             pool: pool.key(),
             goal: pool.goal,
+            contribution_amount,
+            total_cycles,
         });
         Ok(())
     }
 
-    pub fn stake_on_goal(ctx: Context<StakeGoal>, amount: u64, is_yes: bool) -> Result<()> {
-        require!(amount >= MIN_STAKE, ErrorCode::MinStakeNotMet);
+    /// Adds a committee member and fixes their payout order slot.
+    pub fn join_committee(ctx: Context<JoinCommittee>, payout_position: u8) -> Result<()> {
+        require!(payout_position > 0, ErrorCode::InvalidPayoutPosition);
+        let pool = &mut ctx.accounts.prediction_pool;
+        require!(!pool.is_resolved, ErrorCode::PoolResolved);
+        require!(pool.members.len() < MAX_MEMBERS, ErrorCode::CommitteeFull);
+
+        let member_key = ctx.accounts.member.key();
+        require!(
+            !pool.members.iter().any(|m| m.member == member_key),
+            ErrorCode::MemberAlreadyJoined
+        );
+        require!(
+            !pool
+                .members
+                .iter()
+                .any(|m| m.payout_position == payout_position),
+            ErrorCode::PayoutPositionTaken
+        );
+
+        pool.members.push(MemberEntry {
+            member: member_key,
+            payout_position,
+            has_received: false,
+        });
+        pool.members
+            .sort_by_key(|member| member.payout_position);
+
+        emit!(MemberJoined {
+            pool: pool.key(),
+            member: member_key,
+            payout_position,
+        });
+        Ok(())
+    }
+
+    /// Member pays one cycle contribution into committee escrow.
+    pub fn pay_contribution(ctx: Context<PayContribution>, amount: u64) -> Result<()> {
+        require!(amount >= MIN_CONTRIBUTION, ErrorCode::MinContributionNotMet);
         let pool = &mut ctx.accounts.prediction_pool;
         require!(!pool.is_resolved, ErrorCode::PoolResolved);
 
         let goal = &ctx.accounts.savings_goal;
         require!(
             Clock::get()?.unix_timestamp < goal.deadline,
-            ErrorCode::StakeAfterDeadline
+            ErrorCode::ContributionAfterDeadline
         );
-
-        if is_yes {
-            require!(
-                pool.yes_stakers.len() < MAX_STAKERS_PER_SIDE,
-                ErrorCode::SideFull
-            );
-        } else {
-            require!(
-                pool.no_stakers.len() < MAX_STAKERS_PER_SIDE,
-                ErrorCode::SideFull
-            );
-        }
+        require!(
+            pool.members
+                .iter()
+                .any(|member| member.member == ctx.accounts.member.key()),
+            ErrorCode::NotCommitteeMember
+        );
+        require!(
+            amount >= pool.contribution_amount,
+            ErrorCode::AmountBelowContribution
+        );
 
         transfer(
             CpiContext::new(
                 ctx.accounts.token_program.to_account_info(),
                 Transfer {
-                    from: ctx.accounts.staker_usdc.to_account_info(),
+                    from: ctx.accounts.member_usdc.to_account_info(),
                     to: ctx.accounts.pool_vault.to_account_info(),
-                    authority: ctx.accounts.staker.to_account_info(),
+                    authority: ctx.accounts.member.to_account_info(),
                 },
             ),
             amount,
         )?;
 
-        let entry = StakeEntry {
-            staker: ctx.accounts.staker.key(),
-            amount,
-        };
-        if is_yes {
-            pool.yes_stakers.push(entry);
-            pool.total_yes = pool
-                .total_yes
-                .checked_add(amount)
-                .ok_or(ErrorCode::AmountOverflow)?;
-        } else {
-            pool.no_stakers.push(entry);
-            pool.total_no = pool
-                .total_no
-                .checked_add(amount)
-                .ok_or(ErrorCode::AmountOverflow)?;
-        }
+        pool.pool_balance = pool
+            .pool_balance
+            .checked_add(amount)
+            .ok_or(ErrorCode::AmountOverflow)?;
 
-        emit!(NewStake {
+        emit!(ContributionPaid {
             pool: pool.key(),
-            staker: ctx.accounts.staker.key(),
+            member: ctx.accounts.member.key(),
             amount,
-            is_yes,
         });
         Ok(())
     }
 
-    /// Permissionless resolution after goal deadline. Pass winner ATAs in `remaining_accounts`
-    /// in the same order as the winning `StakeEntry` list (yes side if achieved else no side).
-    pub fn resolve_pool<'info>(
-        ctx: Context<'_, '_, '_, 'info, ResolvePool<'info>>,
-    ) -> Result<()> {
-        require!(
-            !ctx.accounts.prediction_pool.is_resolved,
-            ErrorCode::PoolResolved
-        );
-
-        let goal = &ctx.accounts.savings_goal;
-        require!(
-            Clock::get()?.unix_timestamp >= goal.deadline,
-            ErrorCode::DeadlineNotReached
-        );
-
-        let achieved = goal.current_amount >= goal.target_amount;
-        let total_pool = ctx
-            .accounts
-            .prediction_pool
-            .total_yes
-            .checked_add(ctx.accounts.prediction_pool.total_no)
-            .ok_or(ErrorCode::AmountOverflow)?;
-
-        let platform_fee = total_pool
-            .checked_mul(150)
-            .and_then(|v| v.checked_div(10_000))
-            .ok_or(ErrorCode::AmountOverflow)?;
-        let distributable = total_pool
-            .checked_sub(platform_fee)
-            .ok_or(ErrorCode::AmountOverflow)?;
-
-        let (winners, losers_total, winners_total) = if achieved {
+    /// Pays the full current committee cycle pot to the next member in payout order.
+    pub fn claim_cycle_payout(ctx: Context<ClaimCyclePayout>) -> Result<()> {
+        let pool_ai = ctx.accounts.prediction_pool.to_account_info();
+        let (goal_key, bump, pool_balance, current_cycle, members_len, expected_member) = {
+            let pool = &ctx.accounts.prediction_pool;
             (
-                ctx.accounts.prediction_pool.yes_stakers.clone(),
-                ctx.accounts.prediction_pool.total_no,
-                ctx.accounts.prediction_pool.total_yes,
-            )
-        } else {
-            (
-                ctx.accounts.prediction_pool.no_stakers.clone(),
-                ctx.accounts.prediction_pool.total_yes,
-                ctx.accounts.prediction_pool.total_no,
+                pool.goal,
+                pool.bump,
+                pool.pool_balance,
+                pool.current_cycle,
+                pool.members.len(),
+                pool.members
+                    .get(usize::from(pool.current_cycle))
+                    .map(|member| member.member),
             )
         };
+        require!(!ctx.accounts.prediction_pool.is_resolved, ErrorCode::PoolResolved);
+        require!(pool_balance > 0, ErrorCode::NoFundsAvailable);
 
-        require_eq!(
-            ctx.remaining_accounts.len(),
-            winners.len(),
-            ErrorCode::WrongRemainingAccounts
-        );
+        let current_index = usize::from(current_cycle);
+        require!(current_index < members_len, ErrorCode::NoMorePayoutRecipients);
+        let expected_member = expected_member.ok_or(ErrorCode::NoMorePayoutRecipients)?;
+        require_keys_eq!(ctx.accounts.recipient.key(), expected_member);
 
-        let goal_key = ctx.accounts.prediction_pool.goal;
-        let bump = ctx.accounts.prediction_pool.bump;
-        let pool_ai = ctx.accounts.prediction_pool.to_account_info();
+        let payout_amount = pool_balance;
         let pool_seeds: &[&[u8]] = &[b"pool", goal_key.as_ref(), &[bump]];
         let signer_seeds: &[&[&[u8]]] = &[pool_seeds];
 
-        let pool_vault_ai = ctx.accounts.pool_vault.to_account_info();
-        let treasury_ai = ctx.accounts.treasury.to_account_info();
-        let token_program_ai = ctx.accounts.token_program.to_account_info();
-        let usdc_mint_key = ctx.accounts.usdc_mint.key();
+        transfer(
+            CpiContext::new_with_signer(
+                ctx.accounts.token_program.to_account_info(),
+                Transfer {
+                    from: ctx.accounts.pool_vault.to_account_info(),
+                    to: ctx.accounts.recipient_usdc.to_account_info(),
+                    authority: pool_ai.clone(),
+                },
+                signer_seeds,
+            ),
+            payout_amount,
+        )?;
 
-        let winner_ais: Vec<AccountInfo> = ctx.remaining_accounts[..winners.len()].to_vec();
-
-        if platform_fee > 0 {
-            transfer(
-                CpiContext::new_with_signer(
-                    token_program_ai.clone(),
-                    Transfer {
-                        from: pool_vault_ai.clone(),
-                        to: treasury_ai.clone(),
-                        authority: pool_ai.clone(),
-                    },
-                    signer_seeds,
-                ),
-                platform_fee,
-            )?;
+        let pool = &mut ctx.accounts.prediction_pool;
+        pool.pool_balance = 0;
+        if let Some(member) = pool.members.get_mut(current_index) {
+            member.has_received = true;
         }
+        pool.current_cycle = pool
+            .current_cycle
+            .checked_add(1)
+            .ok_or(ErrorCode::AmountOverflow)?;
 
-        let mut remaining = distributable;
-        for (i, entry) in winners.iter().enumerate() {
-            let dest_ai = winner_ais[i].clone();
-            {
-                let mut data: &[u8] = &dest_ai.try_borrow_data()?;
-                let dest = TokenAccount::try_deserialize(&mut data)?;
-                require!(dest.mint == usdc_mint_key, ErrorCode::BadMint);
-                require!(dest.owner == entry.staker, ErrorCode::BadWinnerAta);
-            }
+        emit!(PayoutClaimed {
+            pool: pool.key(),
+            recipient: ctx.accounts.recipient.key(),
+            cycle: pool.current_cycle,
+            amount: payout_amount,
+        });
+        Ok(())
+    }
 
-            let winnings: u64 = if winners_total > 0 {
-                let w = (entry.amount as u128)
-                    .checked_add(
-                        (entry.amount as u128)
-                            .checked_mul(losers_total as u128)
-                            .and_then(|x| x.checked_div(winners_total as u128))
-                            .ok_or(ErrorCode::AmountOverflow)?,
-                    )
-                    .ok_or(ErrorCode::AmountOverflow)?;
-                u64::try_from(w).map_err(|_| error!(ErrorCode::AmountOverflow))?
-            } else {
-                entry.amount
-            };
+    /// Marks committee as resolved once all cycles are completed.
+    pub fn finalize_committee(ctx: Context<FinalizeCommittee>) -> Result<()> {
+        let pool_ai = ctx.accounts.prediction_pool.to_account_info();
+        let (goal_key, bump, current_cycle, total_cycles, is_resolved) = {
+            let pool = &ctx.accounts.prediction_pool;
+            (
+                pool.goal,
+                pool.bump,
+                pool.current_cycle,
+                pool.total_cycles,
+                pool.is_resolved,
+            )
+        };
+        require!(!is_resolved, ErrorCode::PoolResolved);
+        require!(current_cycle >= total_cycles, ErrorCode::CyclesNotCompleted);
 
-            let payout = std::cmp::min(winnings, remaining);
-            if payout == 0 {
-                continue;
-            }
-            remaining = remaining
-                .checked_sub(payout)
-                .ok_or(ErrorCode::AmountOverflow)?;
-
-            transfer(
-                CpiContext::new_with_signer(
-                    token_program_ai.clone(),
-                    Transfer {
-                        from: pool_vault_ai.clone(),
-                        to: dest_ai,
-                        authority: pool_ai.clone(),
-                    },
-                    signer_seeds,
-                ),
-                payout,
-            )?;
-        }
+        let pool_seeds: &[&[u8]] = &[b"pool", goal_key.as_ref(), &[bump]];
+        let signer_seeds: &[&[&[u8]]] = &[pool_seeds];
 
         let cpi_accounts = savings_goal::cpi::accounts::MarkResolved {
             savings_goal: ctx.accounts.savings_goal.to_account_info(),
@@ -256,20 +242,19 @@ pub mod prediction_pool {
 
         let pool = &mut ctx.accounts.prediction_pool;
         pool.is_resolved = true;
-
-        emit!(GoalResolved {
+        emit!(CommitteeResolved {
             pool: pool.key(),
-            achieved,
-            platform_fee,
+            cycles_completed: pool.current_cycle,
         });
         Ok(())
     }
 }
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, InitSpace)]
-pub struct StakeEntry {
-    pub staker: Pubkey,
-    pub amount: u64,
+pub struct MemberEntry {
+    pub member: Pubkey,
+    pub payout_position: u8,
+    pub has_received: bool,
 }
 
 #[account]
@@ -277,11 +262,11 @@ pub struct StakeEntry {
 pub struct PredictionPool {
     pub goal: Pubkey,
     #[max_len(50)]
-    pub yes_stakers: Vec<StakeEntry>,
-    #[max_len(50)]
-    pub no_stakers: Vec<StakeEntry>,
-    pub total_yes: u64,
-    pub total_no: u64,
+    pub members: Vec<MemberEntry>,
+    pub contribution_amount: u64,
+    pub current_cycle: u16,
+    pub total_cycles: u16,
+    pub pool_balance: u64,
     pub is_resolved: bool,
     pub vault: Pubkey,
     pub bump: u8,
@@ -316,7 +301,20 @@ pub struct CreatePool<'info> {
 }
 
 #[derive(Accounts)]
-pub struct StakeGoal<'info> {
+pub struct JoinCommittee<'info> {
+    pub savings_goal: Account<'info, SavingsGoal>,
+    #[account(
+        mut,
+        seeds = [b"pool", savings_goal.key().as_ref()],
+        bump,
+        constraint = prediction_pool.goal == savings_goal.key()
+    )]
+    pub prediction_pool: Account<'info, PredictionPool>,
+    pub member: Signer<'info>,
+}
+
+#[derive(Accounts)]
+pub struct PayContribution<'info> {
     pub savings_goal: Account<'info, SavingsGoal>,
     #[account(
         mut,
@@ -328,13 +326,13 @@ pub struct StakeGoal<'info> {
     #[account(mut, address = prediction_pool.vault)]
     pub pool_vault: Account<'info, TokenAccount>,
     #[account(mut)]
-    pub staker_usdc: Account<'info, TokenAccount>,
-    pub staker: Signer<'info>,
+    pub member_usdc: Account<'info, TokenAccount>,
+    pub member: Signer<'info>,
     pub token_program: Program<'info, Token>,
 }
 
 #[derive(Accounts)]
-pub struct ResolvePool<'info> {
+pub struct ClaimCyclePayout<'info> {
     pub savings_goal: Account<'info, SavingsGoal>,
     #[account(
         mut,
@@ -346,34 +344,62 @@ pub struct ResolvePool<'info> {
     #[account(mut, address = prediction_pool.vault)]
     pub pool_vault: Account<'info, TokenAccount>,
     #[account(mut)]
-    pub treasury: Account<'info, TokenAccount>,
-    pub usdc_mint: Account<'info, Mint>,
+    pub recipient: Signer<'info>,
+    #[account(mut)]
+    pub recipient_usdc: Account<'info, TokenAccount>,
+    pub token_program: Program<'info, Token>,
+}
+
+#[derive(Accounts)]
+pub struct FinalizeCommittee<'info> {
+    pub savings_goal: Account<'info, SavingsGoal>,
+    #[account(
+        mut,
+        seeds = [b"pool", savings_goal.key().as_ref()],
+        bump,
+        constraint = prediction_pool.goal == savings_goal.key()
+    )]
+    pub prediction_pool: Account<'info, PredictionPool>,
     pub savings_goal_program: Program<'info, SavingsGoalProgram>,
     /// CHECK: must be this program's id (used in savings_goal PDA check)
     #[account(address = crate::ID)]
     pub prediction_pool_program: AccountInfo<'info>,
-    pub token_program: Program<'info, Token>,
 }
 
 #[event]
-pub struct PoolCreated {
+pub struct CommitteePoolCreated {
     pub pool: Pubkey,
     pub goal: Pubkey,
+    pub contribution_amount: u64,
+    pub total_cycles: u16,
 }
 
 #[event]
-pub struct NewStake {
+pub struct MemberJoined {
     pub pool: Pubkey,
-    pub staker: Pubkey,
+    pub member: Pubkey,
+    pub payout_position: u8,
+}
+
+#[event]
+pub struct ContributionPaid {
+    pub pool: Pubkey,
+    pub member: Pubkey,
     pub amount: u64,
-    pub is_yes: bool,
 }
 
 #[event]
-pub struct GoalResolved {
+pub struct PayoutClaimed {
     pub pool: Pubkey,
-    pub achieved: bool,
-    pub platform_fee: u64,
+    pub recipient: Pubkey,
+    pub cycle: u16,
+    pub amount: u64,
+}
+
+#[event]
+pub struct CommitteeResolved {
+    pub pool: Pubkey,
+    pub cycles_completed: u16,
 }
 
 #[error_code]
@@ -382,22 +408,32 @@ pub enum ErrorCode {
     GoalAlreadyHasPool,
     #[msg("Unauthorized")]
     Unauthorized,
-    #[msg("Minimum stake not met")]
-    MinStakeNotMet,
+    #[msg("Minimum contribution not met")]
+    MinContributionNotMet,
+    #[msg("Invalid cycle configuration")]
+    InvalidCycleConfig,
     #[msg("Pool already resolved")]
     PoolResolved,
-    #[msg("Cannot stake after goal deadline")]
-    StakeAfterDeadline,
-    #[msg("Side is full")]
-    SideFull,
+    #[msg("Cannot pay contribution after goal deadline")]
+    ContributionAfterDeadline,
+    #[msg("Committee member limit reached")]
+    CommitteeFull,
+    #[msg("Member already joined this committee")]
+    MemberAlreadyJoined,
+    #[msg("Payout position is already taken")]
+    PayoutPositionTaken,
+    #[msg("Payout position must be greater than zero")]
+    InvalidPayoutPosition,
+    #[msg("Signer is not a committee member")]
+    NotCommitteeMember,
+    #[msg("Amount is below committee contribution amount")]
+    AmountBelowContribution,
+    #[msg("No funds available in committee pool")]
+    NoFundsAvailable,
+    #[msg("No more payout recipients configured")]
+    NoMorePayoutRecipients,
+    #[msg("All committee cycles are not completed yet")]
+    CyclesNotCompleted,
     #[msg("Amount overflow")]
     AmountOverflow,
-    #[msg("Deadline not reached")]
-    DeadlineNotReached,
-    #[msg("Remaining winner ATAs must match winners count")]
-    WrongRemainingAccounts,
-    #[msg("Winner ATA mint mismatch")]
-    BadMint,
-    #[msg("Winner ATA owner mismatch")]
-    BadWinnerAta,
 }

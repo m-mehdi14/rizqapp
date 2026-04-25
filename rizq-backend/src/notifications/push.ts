@@ -1,6 +1,4 @@
-import { config } from "../config";
-
-/** Send push — wire FCM HTTP v1 or Expo when tokens are present */
+/** Send push — wire FCM/APNs provider in production. */
 export async function sendPush(
   token: string | null | undefined,
   title: string,
@@ -10,28 +8,13 @@ export async function sendPush(
     console.warn("[push] no token, skipping");
     return;
   }
-  if (token.startsWith("ExponentPushToken")) {
-    await fetch("https://exp.host/--/api/v2/push/send", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        to: token,
-        title,
-        body,
-        sound: "default",
-      }),
-    });
-    return;
-  }
-  console.log("[push] FCM token present; configure Firebase Admin for production:", {
+  console.log("[push] token present; configure provider for production:", {
     title,
     bodyPreview: body.slice(0, 80),
+    tokenPreview: `${token.slice(0, 6)}...${token.slice(-4)}`,
   });
 }
 
-export function getPushTokenFromUser(row: {
-  fcm_token?: string | null;
-  expo_push_token?: string | null;
-}): string | undefined {
-  return row.fcm_token ?? row.expo_push_token ?? undefined;
+export function getPushTokenFromUser(row: { device_push_token?: string | null }): string | undefined {
+  return row.device_push_token ?? undefined;
 }

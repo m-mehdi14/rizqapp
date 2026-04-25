@@ -1,80 +1,71 @@
 import React from "react";
 import { View, Text, StyleSheet, Pressable, ScrollView } from "react-native";
 import { useRoute } from "@react-navigation/native";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { colors, radii, spacing, typography } from "../theme/tokens";
-import { PredictionBar } from "../components/PredictionBar";
 import { useAppStore } from "../store/useAppStore";
 import { ScreenShell } from "../components/ScreenShell";
 import { GlassCard } from "../components/GlassCard";
-import { createStake } from "../api/rizqApi";
 
-export function PredictionPoolScreen() {
+export function CommitteeContributionPlannerScreen() {
   const route = useRoute();
-  const { goalId } = route.params as { goalId: string };
-  const queryClient = useQueryClient();
-  const wallet = useAppStore((s) => s.wallet);
-  const goal = useAppStore((s) => s.activeGoals.find((g) => g.id === goalId));
-  const yes = (goal?.yesCount ?? 0) * 1_000_000;
-  const no = (goal?.noCount ?? 0) * 1_000_000;
-
-  const stakeMutation = useMutation({
-    mutationFn: async (isYes: boolean) => {
-      if (!wallet) throw new Error("Connect wallet first");
-      return createStake({
-        goalId,
-        stakerWallet: wallet,
-        amountLamports: 1_000_000,
-        isYes,
-      });
-    },
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["goals", wallet] });
-    },
-  });
+  const params = route.params as { goalId?: string; committeeId?: string };
+  const committeeId = params.committeeId ?? params.goalId ?? "";
+  const committee = useAppStore((s) => s.committees.find((g) => g.id === committeeId));
+  const updateCommittee = useAppStore((s) => s.updateCommittee);
+  const contributionLamports = Math.max(0, committee?.contributionLamports ?? 0);
+  const paidLamports = Math.max(0, committee?.savedLamports ?? 0);
+  const totalLamports = Math.max(contributionLamports, committee?.targetLamports ?? 0);
+  const remainingLamports = Math.max(0, totalLamports - paidLamports);
 
   return (
     <ScreenShell>
       <ScrollView contentContainerStyle={styles.root}>
-        <Text style={styles.title}>Prediction Pool</Text>
-        <Text style={styles.sub}>{goal?.name ?? "Goal"}</Text>
+        <Text style={styles.title}>Contribution Planner</Text>
+        <Text style={styles.sub}>{committee?.name ?? "Committee"}</Text>
         <GlassCard style={styles.poolCard}>
-          <PredictionBar yesTotal={yes} noTotal={no} />
+          <Text style={styles.help}>Cycle progress</Text>
           <View style={styles.row}>
-            <Text style={styles.pool}>${(yes / 1_000_000).toFixed(0)}</Text>
-            <Text style={styles.pool}>${(no / 1_000_000).toFixed(0)}</Text>
+            <Text style={styles.pool}>Paid ${(paidLamports / 1_000_000).toFixed(0)}</Text>
+            <Text style={styles.pool}>Remaining ${(remainingLamports / 1_000_000).toFixed(0)}</Text>
           </View>
-          <Text style={styles.help}>Pool total: ${((yes + no) / 1_000_000).toFixed(0)} USDC</Text>
-          <Text style={styles.help}>If goal achieves → YES wins +$3.50</Text>
-          <Text style={styles.help}>If goal fails → NO wins +$14</Text>
+          <Text style={styles.help}>Per-cycle contribution: ${(contributionLamports / 1_000_000).toFixed(2)} USDC</Text>
+          <Text style={styles.help}>Next due in {committee?.daysLeft ?? 0} days</Text>
+          <Text style={styles.help}>Status: {committee?.status ?? "active"}</Text>
         </GlassCard>
         <GlassCard style={styles.avatarCard}>
-          <Text style={styles.help}>Believers: 👤👤👤 +1 more</Text>
-          <Text style={styles.help}>Doubters: 👤</Text>
+          <Text style={styles.help}>Members: {committee?.memberCount ?? 0}/{committee?.maxMembers ?? 0}</Text>
+          <Text style={styles.help}>Cycle: {committee?.currentCycle ?? 1}/{committee?.totalCycles ?? 1}</Text>
         </GlassCard>
         <GlassCard style={styles.ctaCard}>
-          <Text style={styles.ctaCopy}>I believe Muhammad will hit this goal 🙌</Text>
+          <Text style={styles.ctaCopy}>Record one contribution payment for this cycle.</Text>
           <Pressable
             style={styles.yesBtn}
-            onPress={() => stakeMutation.mutate(true)}
-            disabled={stakeMutation.isPending}
+            onPress={() => {
+              if (!committee) return;
+              const nextSaved = committee.savedLamports + contributionLamports;
+              const nextProgress =
+                committee.targetLamports > 0
+                  ? Math.max(0, Math.min(1, nextSaved / committee.targetLamports))
+                  : committee.progress;
+              updateCommittee(committeeId, {
+                savedLamports: nextSaved,
+                progress: nextProgress,
+                lastStakeAt: new Date().toISOString(),
+              });
+            }}
           >
             <Text style={styles.yesText}>
-              {stakeMutation.isPending ? "Staking..." : "Stake YES — I&apos;m in!"}
+              Pay contribution
             </Text>
-          </Pressable>
-          <Pressable
-            style={styles.noBtn}
-            onPress={() => stakeMutation.mutate(false)}
-            disabled={stakeMutation.isPending}
-          >
-            <Text style={styles.noText}>Stake NO — prove me wrong</Text>
           </Pressable>
         </GlassCard>
       </ScrollView>
     </ScreenShell>
   );
 }
+
+// Backward-compatible export while route names are being migrated.
+export const PredictionPoolScreen = CommitteeContributionPlannerScreen;
 
 const styles = StyleSheet.create({
   root: {
@@ -98,12 +89,4 @@ const styles = StyleSheet.create({
     marginBottom: spacing.unit * 2,
   },
   yesText: { color: colors.textInverse, fontWeight: "700" },
-  noBtn: {
-    borderWidth: 1,
-    borderColor: "#FF7B8A",
-    paddingVertical: 14,
-    borderRadius: radii.button,
-    alignItems: "center",
-  },
-  noText: { color: "#FF7B8A", fontWeight: "700" },
 });

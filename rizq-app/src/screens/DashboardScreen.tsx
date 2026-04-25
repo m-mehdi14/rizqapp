@@ -4,7 +4,7 @@ import { CommonActions, useNavigation } from "@react-navigation/native";
 import { useQuery } from "@tanstack/react-query";
 import { colors, spacing, typography } from "../theme/tokens";
 import { useAppStore } from "../store/useAppStore";
-import { GoalCard } from "../components/GoalCard";
+import { CommitteeCard } from "../components/CommitteeCard";
 import { CoachingCard } from "../components/CoachingCard";
 import { USDCAmount } from "../components/USDCAmount";
 import { ScreenShell } from "../components/ScreenShell";
@@ -14,17 +14,18 @@ import { fetchCoaching } from "../api/rizqApi";
 
 export function DashboardScreen() {
   const wallet = useAppStore((s) => s.wallet);
+  const userId = useAppStore((s) => s.userId);
   const balanceLamports = useAppStore((s) => s.usdcBalance);
-  const goals = useAppStore((s) => s.activeGoals);
+  const committees = useAppStore((s) => s.committees);
   const navigation = useNavigation();
 
   const firstName = wallet ? wallet.slice(0, 6) : "there";
   const now = new Date();
-  const topGoalId = goals[0]?.id;
+  const topCommitteeId = committees[0]?.id;
   const coachingQuery = useQuery({
-    queryKey: ["coaching", topGoalId],
-    queryFn: () => fetchCoaching(topGoalId as string),
-    enabled: !!topGoalId,
+    queryKey: ["coaching", topCommitteeId, userId],
+    queryFn: () => fetchCoaching(topCommitteeId as string, userId),
+    enabled: !!topCommitteeId,
     refetchInterval: 30000,
   });
 
@@ -49,16 +50,16 @@ export function DashboardScreen() {
           <USDCAmount lamports={balanceLamports} showPKR size="lg" />
           <View style={styles.sep} />
           <Text style={styles.summary}>
-            {goals.length} active goals · ${(goals.reduce((acc, g) => acc + g.yesCount + g.noCount, 0) * 0.5).toFixed(2)} in stakes
+            {committees.length} active committees · {committees.reduce((acc, c) => acc + (c.memberCount ?? 0), 0)} members
           </Text>
         </GlassCard>
 
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.quickRow}>
           {[
-            ["⚡", "Deposit", "CreateTab"],
-            ["📨", "Invite", "GoalsTab"],
-            ["📊", "Pool", "GoalsTab"],
-            ["🤖", "Coach", "CoachTab"],
+            ["⚡", "Pay", "CommitteesTab"],
+            ["📨", "Invite", "CommitteesTab"],
+            ["🧾", "Schedule", "CommitteesTab"],
+            ["🤖", "Coach", "AITab"],
           ].map(([emoji, label, tab]) => (
             <Pressable
               key={label}
@@ -70,27 +71,27 @@ export function DashboardScreen() {
           ))}
         </ScrollView>
 
-        <SectionHeader title="Active Goals" />
-        {goals.length === 0 ? (
+        <SectionHeader title="My Committees" />
+        {committees.length === 0 ? (
           <Pressable
             style={styles.emptyCard}
             onPress={() => navigation.dispatch(CommonActions.navigate({ name: "CreateTab" }))}
           >
-            <Text style={styles.emptyTitle}>🌙 Your first goal is waiting.</Text>
-            <Text style={styles.empty}>Create a goal and bring your squad in.</Text>
+            <Text style={styles.emptyTitle}>Your first committee is waiting.</Text>
+            <Text style={styles.empty}>Create a committee and invite trusted members.</Text>
           </Pressable>
         ) : (
-          goals.map((g) => (
-            <GoalCard
+          committees.map((g) => (
+            <CommitteeCard
               key={g.id}
-              goal={g}
+              committee={g}
               onPress={() =>
                 navigation.dispatch(
                   CommonActions.navigate({
-                    name: "GoalsTab",
+                    name: "CommitteesTab",
                     params: {
-                      screen: "GoalDetail",
-                      params: { goalId: g.id },
+                      screen: "MemberDashboard",
+                      params: { committeeId: g.id },
                     },
                   })
                 )

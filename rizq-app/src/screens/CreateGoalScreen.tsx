@@ -1,54 +1,30 @@
 import React, { useState } from "react";
 import { View, Text, StyleSheet, TextInput, Pressable, ScrollView } from "react-native";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { CommonActions, useNavigation } from "@react-navigation/native";
 import { colors, radii, spacing, typography } from "../theme/tokens";
 import { ScreenShell } from "../components/ScreenShell";
 import { GlassCard } from "../components/GlassCard";
 import { goalEmoji, goalGradient } from "../theme/goalTheme";
-import { GoalCard } from "../components/GoalCard";
-import { createGoal } from "../api/rizqApi";
-import { useAppStore } from "../store/useAppStore";
+import { CommitteeCard } from "../components/CommitteeCard";
+import { useAppStore, type Committee } from "../store/useAppStore";
 
 const TYPES = ["Eid", "Wedding", "Hajj", "Education", "Emergency", "Custom"] as const;
 
-export function CreateGoalScreen() {
+export function CommitteeQuickCreateScreen() {
   const navigation = useNavigation();
-  const queryClient = useQueryClient();
-  const wallet = useAppStore((s) => s.wallet);
+  const addCommittee = useAppStore((s) => s.addCommittee);
   const [step, setStep] = useState(1);
-  const [goalType, setGoalType] = useState<string>(TYPES[0]);
-  const [goalName, setGoalName] = useState("My Goal");
+  const [committeeType, setCommitteeType] = useState<string>(TYPES[0]);
+  const [committeeName, setCommitteeName] = useState("My Committee");
   const [amount, setAmount] = useState("100");
   const [deadlineWeeks] = useState(8);
   const amt = Number(amount) || 0;
   const weekly = deadlineWeeks > 0 ? amt / deadlineWeeks : 0;
-  const createGoalMutation = useMutation({
-    mutationFn: async () => {
-      if (!wallet) throw new Error("Connect wallet first");
-      return createGoal({
-        wallet,
-        name: goalName,
-        type: goalType,
-        targetLamports: Math.round(amt * 1_000_000),
-        deadline: new Date(Date.now() + deadlineWeeks * 7 * 86400000).toISOString(),
-      });
-    },
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["goals", wallet] });
-      navigation.dispatch(
-        CommonActions.navigate({
-          name: "GoalsTab",
-        })
-      );
-      setStep(1);
-    },
-  });
 
   return (
     <ScreenShell>
       <ScrollView contentContainerStyle={styles.root}>
-        <Text style={styles.title}>Create goal — step {step} of 3</Text>
+        <Text style={styles.title}>Create committee — step {step} of 3</Text>
         {step === 1 && (
           <View style={styles.grid}>
             {TYPES.map((t) => {
@@ -56,11 +32,11 @@ export function CreateGoalScreen() {
               return (
                 <Pressable
                   key={t}
-                  onPress={() => setGoalType(t)}
+                  onPress={() => setCommitteeType(t)}
                   style={[
                     styles.typeCard,
-                    { borderColor: goalType === t ? g0 : "rgba(255,255,255,0.12)" },
-                    goalType === t && styles.typeCardOn,
+                    { borderColor: committeeType === t ? g0 : "rgba(255,255,255,0.12)" },
+                    committeeType === t && styles.typeCardOn,
                   ]}
                 >
                   <View style={[styles.emojiWrap, { backgroundColor: `${g0}33` }]}>
@@ -78,15 +54,15 @@ export function CreateGoalScreen() {
         )}
         {step === 2 && (
           <>
-            <Text style={styles.label}>Goal name</Text>
+            <Text style={styles.label}>Committee name</Text>
             <TextInput
-              value={goalName}
-              onChangeText={setGoalName}
+              value={committeeName}
+              onChangeText={setCommitteeName}
               style={styles.nameInput}
-              placeholder="Eid Outfit 2026"
+              placeholder="Hajj 2026 Circle"
               placeholderTextColor={colors.textMuted}
             />
-            <Text style={styles.label}>How much do you want to save?</Text>
+            <Text style={styles.label}>Contribution per cycle</Text>
             <View style={styles.amountRow}>
               <Text style={styles.currency}>$</Text>
               <TextInput
@@ -109,24 +85,29 @@ export function CreateGoalScreen() {
             </View>
             <GlassCard style={styles.meaningCard}>
               <Text style={styles.meaningText}>
-                💡 At ${amt || 0} USDC, you&apos;d need to save ${weekly.toFixed(2)} each week.
-                That&apos;s one less lunch out.
+                At ${amt || 0} USDC per cycle, each member contributes ${weekly.toFixed(2)} weekly equivalent.
               </Text>
             </GlassCard>
           </>
         )}
         {step === 3 && (
-          <GoalCard
-            goal={{
+          <CommitteeCard
+            committee={{
               id: "preview",
-              name: goalName || `${goalType} Goal`,
-              type: goalType,
+              name: committeeName || `${committeeType} Committee`,
+              type: committeeType,
               progress: 0,
               savedLamports: 0,
               targetLamports: amt * 1_000_000,
               daysLeft: deadlineWeeks * 7,
               yesCount: 0,
               noCount: 0,
+              memberCount: 1,
+              maxMembers: 10,
+              currentCycle: 1,
+              totalCycles: deadlineWeeks,
+              contributionLamports: amt * 1_000_000,
+              status: "forming",
             }}
             onPress={() => {}}
           />
@@ -138,22 +119,44 @@ export function CreateGoalScreen() {
               setStep((s) => Math.min(3, s + 1));
               return;
             }
-            createGoalMutation.mutate();
+            const draft: Committee = {
+              id: `draft-${Date.now()}`,
+              name: committeeName || `${committeeType} Committee`,
+              type: committeeType,
+              progress: 0,
+              savedLamports: 0,
+              targetLamports: amt * 1_000_000,
+              daysLeft: deadlineWeeks * 7,
+              yesCount: 0,
+              noCount: 0,
+              memberCount: 1,
+              maxMembers: 10,
+              currentCycle: 1,
+              totalCycles: deadlineWeeks,
+              contributionLamports: amt * 1_000_000,
+              status: "forming",
+            };
+            addCommittee(draft);
+            navigation.dispatch(
+              CommonActions.navigate({
+                name: "CommitteesTab",
+                params: { screen: "CreateCommittee" },
+              })
+            );
+            setStep(1);
           }}
-          disabled={createGoalMutation.isPending}
         >
           <Text style={styles.nextText}>
-            {step === 3
-              ? createGoalMutation.isPending
-                ? "Creating..."
-                : "Create (Phantom)"
-              : "Next"}
+            {step === 3 ? "Continue to full wizard" : "Next"}
           </Text>
         </Pressable>
       </ScrollView>
     </ScreenShell>
   );
 }
+
+// Backward-compatible export while route names are being migrated.
+export const CreateGoalScreen = CommitteeQuickCreateScreen;
 
 const styles = StyleSheet.create({
   root: {

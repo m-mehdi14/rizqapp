@@ -1,80 +1,62 @@
 import React from "react";
 import { View, Text, StyleSheet, Pressable, ScrollView } from "react-native";
 import { useRoute, useNavigation } from "@react-navigation/native";
-import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import type { NavigationProp, ParamListBase } from "@react-navigation/native";
 import { colors, radii, spacing, typography } from "../theme/tokens";
 import { ProgressBar } from "../components/ProgressBar";
 import { USDCAmount } from "../components/USDCAmount";
 import { useAppStore } from "../store/useAppStore";
-import type { GoalsStackParamList } from "../navigation/RootNavigator";
 import { ScreenShell } from "../components/ScreenShell";
 import { GlassCard } from "../components/GlassCard";
 import { goalEmoji, goalGradient } from "../theme/goalTheme";
-import { createStake } from "../api/rizqApi";
 
-type Nav = NativeStackNavigationProp<GoalsStackParamList, "GoalDetail">;
-
-export function GoalDetailScreen() {
+export function CommitteeDetailScreen() {
   const route = useRoute();
-  const navigation = useNavigation<Nav>();
-  const queryClient = useQueryClient();
-  const { goalId } = route.params as { goalId: string };
-  const wallet = useAppStore((s) => s.wallet);
-  const goal = useAppStore((s) => s.activeGoals.find((g) => g.id === goalId));
+  const navigation = useNavigation<NavigationProp<ParamListBase>>();
+  const params = route.params as { goalId?: string; committeeId?: string };
+  const committeeId = params.committeeId ?? params.goalId ?? "";
+  const updateCommittee = useAppStore((s) => s.updateCommittee);
+  const committee = useAppStore((s) => s.committees.find((g) => g.id === committeeId));
   const [pendingLamports, setPendingLamports] = React.useState(10_000_000);
 
-  const depositMutation = useMutation({
-    mutationFn: async (lamports: number) => {
-      if (!wallet) throw new Error("Connect wallet first");
-      return createStake({
-        goalId,
-        stakerWallet: wallet,
-        amountLamports: lamports,
-        isYes: true,
-      });
-    },
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["goals", wallet] });
-    },
-  });
-
-  if (!goal) {
+  if (!committee) {
     return (
       <ScreenShell>
         <View style={styles.root}>
-          <Text style={styles.title}>Goal not found</Text>
+          <Text style={styles.title}>Committee not found</Text>
         </View>
       </ScreenShell>
     );
   }
 
-  const [g0] = goalGradient(goal.type);
+  const [g0] = goalGradient(committee.type);
   return (
     <ScreenShell>
       <ScrollView contentContainerStyle={styles.root}>
         <GlassCard style={[styles.hero, { borderColor: `${g0}33` }]}>
-          <Text style={styles.title}>{goalEmoji(goal.type)} {goal.name}</Text>
-          <ProgressBar value={goal.progress} goalType={goal.type} />
+          <Text style={styles.title}>{goalEmoji(committee.type)} {committee.name}</Text>
+          <ProgressBar value={committee.progress} goalType={committee.type} />
           <View style={styles.row}>
-            <USDCAmount lamports={goal.savedLamports} />
+            <USDCAmount lamports={committee.savedLamports} />
             <Text style={styles.of}>of</Text>
-            <USDCAmount lamports={goal.targetLamports} />
+            <USDCAmount lamports={committee.targetLamports} />
           </View>
-          <Text style={styles.meta}>⏰ {goal.daysLeft} days left</Text>
-          <Text style={styles.meta}>💰 ${(Math.max(0, (goal.targetLamports - goal.savedLamports) / 1_000_000) / Math.max(1, Math.ceil(goal.daysLeft / 7))).toFixed(2)} more each week to hit it</Text>
-        </GlassCard>
-
-        <Text style={styles.section}>Your Squad</Text>
-        <GlassCard style={styles.squadCard}>
-          <Text style={styles.squadRow}>● Believers: {goal.yesCount}</Text>
-          <Text style={styles.squadRow}>● Doubters: {goal.noCount}</Text>
-          <Text style={styles.squadMeta}>
-            {goal.yesCount} believe in you · {goal.noCount} doubter
+          <Text style={styles.meta}>⏰ Next due in {committee.daysLeft} days</Text>
+          <Text style={styles.meta}>
+            Cycle {committee.currentCycle ?? 1} of {committee.totalCycles ?? 1} · contribution ${(Math.max(0, committee.contributionLamports ?? 0) / 1_000_000).toFixed(2)} USDC
           </Text>
         </GlassCard>
 
-        <Text style={styles.section}>Deposit</Text>
+        <Text style={styles.section}>Committee status</Text>
+        <GlassCard style={styles.squadCard}>
+          <Text style={styles.squadRow}>● Members: {committee.memberCount ?? 0}/{committee.maxMembers ?? 0}</Text>
+          <Text style={styles.squadRow}>● Status: {committee.status ?? "active"}</Text>
+          <Text style={styles.squadMeta}>
+            This committee follows fixed payout order and contribution cycles.
+          </Text>
+        </GlassCard>
+
+        <Text style={styles.section}>Pay contribution</Text>
         <View style={styles.chips}>
           {[10, 25, 50].map((n) => (
             <Pressable
@@ -88,24 +70,42 @@ export function GoalDetailScreen() {
         </View>
         <Pressable
           style={styles.primary}
-          onPress={() => depositMutation.mutate(pendingLamports)}
-          disabled={depositMutation.isPending}
+          onPress={() => {
+            const nextSaved = committee.savedLamports + pendingLamports;
+            const nextProgress =
+              committee.targetLamports > 0
+                ? Math.max(0, Math.min(1, nextSaved / committee.targetLamports))
+                : committee.progress;
+            updateCommittee(committeeId, {
+              savedLamports: nextSaved,
+              progress: nextProgress,
+              lastStakeAt: new Date().toISOString(),
+            });
+          }}
         >
           <Text style={styles.primaryText}>
-            {depositMutation.isPending ? "Depositing..." : "Deposit via Phantom"}
+            Pay via Phantom
           </Text>
         </Pressable>
 
         <Pressable
           style={styles.secondary}
-          onPress={() => navigation.navigate("PredictionPool", { goalId })}
+          onPress={() =>
+            navigation.navigate("CommitteesTab", {
+              screen: "MemberDashboard",
+              params: { committeeId },
+            })
+          }
         >
-          <Text style={styles.secondaryText}>Open prediction pool</Text>
+          <Text style={styles.secondaryText}>Open committee dashboard</Text>
         </Pressable>
       </ScrollView>
     </ScreenShell>
   );
 }
+
+// Backward-compatible export while route names are being migrated.
+export const GoalDetailScreen = CommitteeDetailScreen;
 
 const styles = StyleSheet.create({
   root: {

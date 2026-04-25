@@ -1,37 +1,38 @@
 import React from "react";
 import { Text, StyleSheet, ScrollView, Pressable } from "react-native";
 import { useNavigation } from "@react-navigation/native";
-import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
+import type { NavigationProp, ParamListBase } from "@react-navigation/native";
 import { colors, spacing, typography } from "../theme/tokens";
 import { useAppStore } from "../store/useAppStore";
-import { GoalCard } from "../components/GoalCard";
-import type { GoalsStackParamList } from "../navigation/RootNavigator";
+import { CommitteeCard } from "../components/CommitteeCard";
 import { ScreenShell } from "../components/ScreenShell";
 import { SectionHeader } from "../components/SectionHeader";
+import type { Committee } from "../store/useAppStore";
 
-type Nav = NativeStackNavigationProp<GoalsStackParamList, "GoalsHome">;
-
-export function GoalsHomeScreen() {
-  const goals = useAppStore((s) => s.activeGoals);
-  const navigation = useNavigation<Nav>();
+export function CommitteesOverviewScreen() {
+  const goals = useAppStore((s) => s.committees as Committee[]);
+  const navigation = useNavigation<NavigationProp<ParamListBase>>();
 
   return (
     <ScreenShell>
       <ScrollView contentContainerStyle={styles.root}>
-        <Text style={styles.title}>Goals</Text>
-        <SectionHeader title="Active Goals" />
+        <Text style={styles.title}>Committees</Text>
+        <SectionHeader title="Active Committees" />
         {goals.length === 0 ? (
           <Pressable style={styles.emptyWrap}>
-            <Text style={styles.emptyTitle}>🌙 Your first goal is waiting.</Text>
-            <Text style={styles.empty}>Create a goal and let friends stake on your journey.</Text>
+            <Text style={styles.emptyTitle}>Your first committee is waiting.</Text>
+            <Text style={styles.empty}>Create a committee and invite your members.</Text>
           </Pressable>
         ) : (
           goals.map((g) => (
-            <GoalCard
+            <CommitteeCard
               key={g.id}
-              goal={g}
+              committee={g}
               onPress={() =>
-                navigation.navigate("GoalDetail", { goalId: g.id })
+                navigation.navigate("CommitteesTab", {
+                  screen: "MemberDashboard",
+                  params: { committeeId: g.id },
+                })
               }
             />
           ))
@@ -40,6 +41,9 @@ export function GoalsHomeScreen() {
     </ScreenShell>
   );
 }
+
+// Backward-compatible export while navigation cleanup is in-progress.
+export const GoalsHomeScreen = CommitteesOverviewScreen;
 
 const styles = StyleSheet.create({
   root: {

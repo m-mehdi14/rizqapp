@@ -7,14 +7,31 @@ datasource db {
 }
 
 model User {
-  id              String  @id @default(uuid()) @db.Uuid
-  wallet_address  String  @unique
-  username        String?
-  expo_push_token String?
-  fcm_token       String?
+  id                  String   @id @default(uuid()) @db.Uuid
+  wallet_address      String   @unique
+  phone_number        String?  @unique
+  display_name        String?
+  username            String?  @unique
+  avatar_url          String?
+  language_pref       String   @default("mixed")
+  device_push_token   String?
+  kyc_status          String   @default("pending")
+  kyc_rejected_reason String?
+  cnic_number         String?
+  is_pro              Boolean  @default(false)
+  pro_expires_at      DateTime?
+  rizq_score          Int      @default(0)
+  onboarding_completed    Boolean  @default(false)
+  onboarding_completed_at DateTime?
+  created_at          DateTime @default(now())
 
-  goals    Goal[]
-  coaching CoachingMessage[]
+  goals                Goal[]            @relation("GoalOwner")
+  coaching             CoachingMessage[]
+  managed_committees   Committee[]       @relation("CommitteeManager")
+  committee_membership CommitteeMember[]
+  committee_contributions CommitteeContribution[]
+  committee_payouts       CommitteePayout[] @relation("CommitteePayoutRecipient")
+  nominees             Nominee[]
 
   @@map("users")
 }
@@ -32,9 +49,10 @@ model Goal {
   yes_count                  Int?
   no_count                   Int?
   last_week_deposit          Int?
-  is_resolved                Boolean?
+  is_resolved                Boolean?  @default(false)
+  created_at                 DateTime? @default(now())
 
-  ownerUser         User             @relation(fields: [owner], references: [id])
+  ownerUser         User              @relation("GoalOwner", fields: [owner], references: [id])
   stakes            Stake[]
   coaching_messages CoachingMessage[]
 
@@ -55,14 +73,136 @@ model Stake {
 }
 
 model CoachingMessage {
-  id         String   @id @default(uuid()) @db.Uuid
-  goal_id    String   @db.Uuid
-  user_id    String   @db.Uuid
-  message    String
-  created_at DateTime
+  id           String   @id @default(uuid()) @db.Uuid
+  goal_id      String?  @db.Uuid
+  committee_id String?  @db.Uuid
+  user_id      String   @db.Uuid
+  message      String
+  created_at   DateTime @default(now())
 
-  goal Goal @relation(fields: [goal_id], references: [id])
-  user User @relation(fields: [user_id], references: [id])
+  goal      Goal?      @relation(fields: [goal_id], references: [id])
+  committee Committee? @relation(fields: [committee_id], references: [id])
+  user      User       @relation(fields: [user_id], references: [id])
 
   @@map("coaching_messages")
+}
+
+model Committee {
+  id                  String    @id @default(uuid()) @db.Uuid
+  name                String
+  description         String?
+  goal_type           String
+  manager_id          String?   @db.Uuid
+  contribution_amount BigInt
+  frequency           String
+  max_members         Int       @default(10)
+  current_members     Int       @default(0)
+  total_cycles        Int
+  current_cycle       Int       @default(1)
+  payout_order_type   String    @default("manager")
+  payout_order_locked Boolean   @default(false)
+  grace_period_days   Int       @default(3)
+  late_penalty_action String    @default("warning")
+  penalty_goes_to     String    @default("welfare")
+  welfare_opt_in_pct  Decimal?  @default(0)
+  kyc_required        Boolean   @default(true)
+  nominee_required    Boolean   @default(false)
+  status              String    @default("forming")
+  pda_address         String?   @unique
+  vault_address       String?
+  invite_code         String?   @unique
+  platform_fee_pct    Decimal?  @default(1.5)
+  next_cycle_date     DateTime?
+  created_at          DateTime  @default(now())
+
+  manager   User?              @relation("CommitteeManager", fields: [manager_id], references: [id])
+  members   CommitteeMember[]
+  coaching  CoachingMessage[]
+  welfare   WelfareTransfer[]
+  contributions CommitteeContribution[]
+  payouts       CommitteePayout[]
+
+  @@map("committees")
+}
+
+model CommitteeMember {
+  id              String    @id @default(uuid()) @db.Uuid
+  committee_id    String    @db.Uuid
+  user_id         String    @db.Uuid
+  payout_position Int?
+  joined_at       DateTime  @default(now())
+  status          String    @default("active")
+  has_received    Boolean   @default(false)
+  received_at     DateTime?
+  received_amount BigInt?
+
+  committee Committee @relation(fields: [committee_id], references: [id])
+  user      User      @relation(fields: [user_id], references: [id])
+
+  @@unique([committee_id, user_id])
+  @@unique([committee_id, payout_position])
+  @@map("committee_members")
+}
+
+model Nominee {
+  id           String   @id @default(uuid()) @db.Uuid
+  user_id      String   @db.Uuid
+  full_name    String
+  phone_number String
+  cnic_number  String
+  relationship String
+  is_primary   Boolean  @default(true)
+  created_at   DateTime @default(now())
+
+  user User @relation(fields: [user_id], references: [id])
+
+  @@map("nominees")
+}
+
+model WelfareTransfer {
+  id                String   @id @default(uuid()) @db.Uuid
+  committee_id      String   @db.Uuid
+  amount_micro_usdc BigInt
+  tx_signature      String
+  reason            String?
+  created_at        DateTime @default(now())
+
+  committee Committee @relation(fields: [committee_id], references: [id])
+
+  @@map("welfare_transfers")
+}
+
+model CommitteeContribution {
+  id                String   @id @default(uuid()) @db.Uuid
+  committee_id      String   @db.Uuid
+  user_id           String   @db.Uuid
+  amount_micro_usdc BigInt
+  tx_signature      String
+  cycle_number      Int?
+  created_at        DateTime @default(now())
+
+  committee Committee @relation(fields: [committee_id], references: [id])
+  user      User      @relation(fields: [user_id], references: [id])
+
+  @@index([committee_id, created_at])
+  @@index([user_id, created_at])
+  @@map("committee_contributions")
+}
+
+model CommitteePayout {
+  id                String   @id @default(uuid()) @db.Uuid
+  committee_id      String   @db.Uuid
+  recipient_user_id String?  @db.Uuid
+  recipient_wallet  String
+  amount_micro_usdc BigInt
+  tx_signature      String
+  cycle_number      Int?
+  claimed_at        DateTime @default(now())
+
+  committee Committee @relation(fields: [committee_id], references: [id])
+  recipient User?     @relation("CommitteePayoutRecipient", fields: [recipient_user_id], references: [id])
+
+  @@index([committee_id, claimed_at])
+  @@index([recipient_wallet, claimed_at])
+  @@map("committee_payouts")
 }

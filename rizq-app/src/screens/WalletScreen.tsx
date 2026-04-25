@@ -13,7 +13,7 @@ import { fetchPkrRate } from "../api/rizqApi";
 export function WalletScreen() {
   const wallet = useAppStore((s) => s.wallet);
   const lamports = useAppStore((s) => s.usdcBalance);
-  const goals = useAppStore((s) => s.activeGoals);
+  const goals = useAppStore((s) => s.committees);
   const rateQuery = useQuery({
     queryKey: ["pkr-rate"],
     queryFn: fetchPkrRate,
@@ -44,20 +44,20 @@ export function WalletScreen() {
         <GlassCard style={styles.timelineCard}>
           <Text style={styles.timelineDate}>Today</Text>
           {goals.length === 0 ? (
-            <Text style={styles.timelineMeta}>No transactions yet. Deposit USDC to start saving.</Text>
+            <Text style={styles.timelineMeta}>No transactions yet. Join a committee to start saving.</Text>
           ) : (
             <>
               <Text style={styles.timelineItem}>
-                ● Goal Deposit              - ${(goals[0].savedLamports / 1_000_000).toFixed(2)}
+                ● Committee contribution   - ${(Math.max(0, goals[0].contributionLamports ?? 0) / 1_000_000).toFixed(2)}
               </Text>
               <Text style={styles.timelineMeta}>
-                {goals[0].name} · Live from backend data
+                {goals[0].name} · Cycle {goals[0].currentCycle ?? 1}/{goals[0].totalCycles ?? 1}
               </Text>
             </>
           )}
           <Text style={styles.timelineDate}>Apr 14</Text>
-          <Text style={styles.timelineItem}>● Stake (YES)               - $1.00</Text>
-          <Text style={styles.timelineMeta}>Prediction pool activity</Text>
+          <Text style={styles.timelineItem}>● Committee payout           + $20.00</Text>
+          <Text style={styles.timelineMeta}>Received from payout order cycle</Text>
         </GlassCard>
 
         <Pressable

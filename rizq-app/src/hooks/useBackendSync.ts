@@ -1,31 +1,67 @@
 import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { fetchGoals, registerUser } from "../api/rizqApi";
+import {
+  fetchCommittees,
+  fetchSessionCommittees,
+  fetchWalletUsdcBalance,
+  linkWalletToSession,
+  registerUser,
+} from "../api/rizqApi";
 import { useAppStore } from "../store/useAppStore";
 
 export function useBackendSync() {
   const wallet = useAppStore((s) => s.wallet);
-  const setGoals = useAppStore((s) => s.setGoals);
+  const authToken = useAppStore((s) => s.authToken);
+  const displayName = useAppStore((s) => s.displayName);
+  const username = useAppStore((s) => s.username);
+  const setUserId = useAppStore((s) => s.setUserId);
+  const setCommittees = useAppStore((s) => s.setCommittees);
   const setBalance = useAppStore((s) => s.setBalance);
 
-  const goalsQuery = useQuery({
-    queryKey: ["goals", wallet],
-    queryFn: async () => fetchGoals(wallet as string),
-    enabled: !!wallet,
+  const committeesQuery = useQuery({
+    queryKey: authToken ? ["committees-session", authToken] : ["committees", wallet],
+    queryFn: async () => {
+      if (authToken) return await fetchSessionCommittees(authToken);
+      return await fetchCommittees(wallet as string);
+    },
+    enabled: !!authToken || !!wallet,
     refetchInterval: 15000,
+  });
+  const walletUsdcQuery = useQuery({
+    queryKey: ["wallet-usdc", wallet],
+    queryFn: async () => fetchWalletUsdcBalance(wallet as string),
+    enabled: !!wallet,
+    refetchInterval: 30000,
   });
 
   useEffect(() => {
     if (!wallet) return;
-    registerUser(wallet).catch(() => undefined);
-  }, [wallet]);
+    if (authToken) {
+      linkWalletToSession({ token: authToken, wallet })
+        .then((user) => setUserId(user.id))
+        .catch(() => undefined);
+      return;
+    }
+    registerUser({
+      wallet,
+      username: username || undefined,
+      displayName: displayName || undefined,
+    })
+      .then((user) => {
+        setUserId(user.id);
+      })
+      .catch(() => undefined);
+  }, [authToken, displayName, setUserId, username, wallet]);
 
   useEffect(() => {
-    if (!goalsQuery.data) return;
-    setGoals(goalsQuery.data);
-    const totalSaved = goalsQuery.data.reduce((acc, g) => acc + g.savedLamports, 0);
-    setBalance(totalSaved);
-  }, [goalsQuery.data, setBalance, setGoals]);
+    if (!committeesQuery.data) return;
+    setCommittees(committeesQuery.data);
+  }, [committeesQuery.data, setCommittees]);
 
-  return goalsQuery;
+  useEffect(() => {
+    if (typeof walletUsdcQuery.data !== "number") return;
+    setBalance(Math.round(walletUsdcQuery.data * 1_000_000));
+  }, [setBalance, walletUsdcQuery.data]);
+
+  return committeesQuery;
 }

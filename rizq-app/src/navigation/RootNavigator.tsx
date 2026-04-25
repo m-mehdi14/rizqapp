@@ -2,45 +2,99 @@ import React from "react";
 import { View, StyleSheet } from "react-native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
-import {
-  House,
-  Target,
-  Sparkle,
-  Wallet,
-  PlusCircle,
-} from "phosphor-react-native";
+import { PlusCircle } from "phosphor-react-native";
 import { colors } from "../theme/tokens";
 import { useAppStore } from "../store/useAppStore";
-import { SplashScreen } from "../screens/SplashScreen";
-import { WelcomeScreen } from "../screens/WelcomeScreen";
-import { ConnectWalletScreen } from "../screens/ConnectWalletScreen";
-import { DashboardScreen } from "../screens/DashboardScreen";
-import { GoalsHomeScreen } from "../screens/GoalsHomeScreen";
-import { CreateGoalScreen } from "../screens/CreateGoalScreen";
-import { GoalDetailScreen } from "../screens/GoalDetailScreen";
-import { PredictionPoolScreen } from "../screens/PredictionPoolScreen";
-import { AICoachingScreen } from "../screens/AICoachingScreen";
-import { WalletScreen } from "../screens/WalletScreen";
+import { HomeScreen } from "../screens/home/HomeScreen";
+import { AiChatScreen, AiMainScreen, RizqScoreScreen } from "../screens/ai/AiScreens";
+import { CommitteeDashboardScreen } from "../screens/committeeDashboard/CommitteeDashboardScreen";
+import { CommitteesHubScreen } from "../screens/committees/CommitteesHubScreen";
+import { CreateKametiSuccessScreen } from "../screens/createKameti/CreateKametiSuccessScreen";
+import { CreateKametiWizardScreen } from "../screens/createKameti/CreateKametiWizardScreen";
+import { JoinKametiSuccessScreen } from "../screens/joinKameti/JoinKametiSuccessScreen";
+import { JoinKametiWizardScreen } from "../screens/joinKameti/JoinKametiWizardScreen";
+import {
+  PayContributionScreen,
+  LatePaymentScreen,
+  OverduePaymentScreen,
+  PayoutNotificationScreen,
+  PayoutClaimScreen,
+  PostPayoutScreen,
+} from "../screens/payments/PaymentScreens";
+import {
+  ProfileMainScreen,
+  SettingsMainScreen,
+  ProLandingScreen,
+  ProPaymentConfirmedScreen,
+  ProRenewalScreen,
+} from "../screens/profile/ProfileScreens";
+import {
+  EdgeCasesScreen,
+  ManagerVoteScreen,
+  Onboarding01SplashScreen,
+  Onboarding02WelcomeScreen,
+  Onboarding03CommitteeScreen,
+  Onboarding04SafetyScreen,
+  OnboardingAuthScreen,
+  Onboarding05PhoneScreen,
+  Onboarding06OtpScreen,
+  Onboarding07KycScreen,
+  Onboarding08KycPendingScreen,
+  Onboarding09NomineeScreen,
+  Onboarding10WalletSetupScreen,
+  Onboarding11ProfileScreen,
+  Onboarding12StartScreen,
+  WelfarePoolScreen,
+  tabIcons,
+} from "../screens/pivot/PivotScreens";
+import {
+  WalletDepositScreen,
+  WalletDetailScreen,
+  WalletHistoryScreen,
+  WalletMainScreen,
+} from "../screens/wallet/WalletScreens";
 
 export type AuthStackParamList = {
-  Splash: undefined;
-  Welcome: undefined;
-  ConnectWallet: undefined;
+  Onboarding01: undefined;
+  Onboarding02: undefined;
+  Onboarding03: undefined;
+  Onboarding04: undefined;
+  OnboardingAuth: undefined;
+  Onboarding05: undefined;
+  Onboarding06: undefined;
+  Onboarding07: undefined;
+  Onboarding08: undefined;
+  Onboarding09: undefined;
+  Onboarding10: undefined;
+  Onboarding11: undefined;
+  Onboarding12: undefined;
 };
 
-export type GoalsStackParamList = {
-  GoalsHome: undefined;
-  GoalDetail: { goalId: string };
-  PredictionPool: { goalId: string };
-  ShareInvite: { goalId: string };
+export type CommitteesStackParamList = {
+  CommitteesHub: undefined;
+  CreateCommittee: undefined;
+  CreateCommitteeSuccess: { inviteLink: string; committeeId?: string; inviteCode?: string };
+  JoinCommittee: { inviteCode?: string } | undefined;
+  JoinCommitteeSuccess: { committeeId?: string } | undefined;
+  MemberDashboard: { committeeId?: string } | undefined;
+  ManagerDashboard: { committeeId?: string } | undefined;
+  PayContribution: { committeeId?: string } | undefined;
+  LatePayment: { committeeId?: string } | undefined;
+  OverduePayment: { committeeId?: string } | undefined;
+  PayoutNotification: { committeeId?: string } | undefined;
+  PayoutClaim: { committeeId?: string } | undefined;
+  PostPayout: { committeeId?: string } | undefined;
+  EdgeCases: undefined;
+  WelfarePool: undefined;
+  ManagerVote: undefined;
 };
 
 export type MainTabParamList = {
   HomeTab: undefined;
-  GoalsTab: undefined;
+  CommitteesTab: undefined;
   CreateTab: undefined;
-  CoachTab: undefined;
-  WalletTab: undefined;
+  AITab: undefined;
+  ProfileTab: undefined;
 };
 
 export type RootStackParamList = {
@@ -49,9 +103,16 @@ export type RootStackParamList = {
 };
 
 const AuthStack = createNativeStackNavigator<AuthStackParamList>();
-const GoalsStack = createNativeStackNavigator<GoalsStackParamList>();
+const CommitteesStack = createNativeStackNavigator<CommitteesStackParamList>();
+const CreateFlowStack = createNativeStackNavigator<CommitteesStackParamList>();
+const AIStack = createNativeStackNavigator();
+const ProfileStack = createNativeStackNavigator();
 const Tabs = createBottomTabNavigator<MainTabParamList>();
 const RootStack = createNativeStackNavigator<RootStackParamList>();
+const HomeTabIcon = tabIcons.home;
+const CommitteesTabIcon = tabIcons.committees;
+const AiTabIcon = tabIcons.ai;
+const ProfileTabIcon = tabIcons.profile;
 
 function TabIcon({
   icon,
@@ -70,13 +131,99 @@ function TabIcon({
   );
 }
 
-function GoalsStackNav() {
+type TabBarIconProps = {
+  color: string;
+  size: number;
+  focused: boolean;
+};
+
+function makeTabIcon(Icon: React.ComponentType<{ color: string; size: number; weight: "regular" }>) {
+  return ({ color, size, focused }: TabBarIconProps) => (
+    <TabIcon
+      color={color}
+      active={focused}
+      icon={<Icon color={color} size={size ?? 24} weight="regular" />}
+    />
+  );
+}
+
+const homeTabBarIcon = makeTabIcon(HomeTabIcon);
+const committeesTabBarIcon = makeTabIcon(CommitteesTabIcon);
+const aiTabBarIcon = makeTabIcon(AiTabIcon);
+const profileTabBarIcon = makeTabIcon(ProfileTabIcon);
+const createTabBarIcon = ({ focused }: { focused: boolean }) => (
+  <View style={[styles.plusWrap, focused && styles.plusWrapOn]}>
+    <PlusCircle color={colors.textInverse} size={30} weight="fill" />
+  </View>
+);
+
+function CommitteesStackNav() {
   return (
-    <GoalsStack.Navigator screenOptions={{ headerShown: false }}>
-      <GoalsStack.Screen name="GoalsHome" component={GoalsHomeScreen} />
-      <GoalsStack.Screen name="GoalDetail" component={GoalDetailScreen} />
-      <GoalsStack.Screen name="PredictionPool" component={PredictionPoolScreen} />
-    </GoalsStack.Navigator>
+    <CommitteesStack.Navigator screenOptions={{ headerShown: false }}>
+      <CommitteesStack.Screen name="CommitteesHub" component={CommitteesHubScreen} />
+      <CommitteesStack.Screen name="CreateCommittee" component={CreateKametiWizardScreen} />
+      <CommitteesStack.Screen
+        name="CreateCommitteeSuccess"
+        component={CreateKametiSuccessScreen}
+      />
+      <CommitteesStack.Screen name="JoinCommittee" component={JoinKametiWizardScreen} />
+      <CommitteesStack.Screen
+        name="JoinCommitteeSuccess"
+        component={JoinKametiSuccessScreen}
+      />
+      <CommitteesStack.Screen name="MemberDashboard" component={CommitteeDashboardScreen} />
+      <CommitteesStack.Screen name="ManagerDashboard" component={CommitteeDashboardScreen} />
+      <CommitteesStack.Screen name="PayContribution" component={PayContributionScreen} />
+      <CommitteesStack.Screen name="LatePayment" component={LatePaymentScreen} />
+      <CommitteesStack.Screen name="OverduePayment" component={OverduePaymentScreen} />
+      <CommitteesStack.Screen name="PayoutNotification" component={PayoutNotificationScreen} />
+      <CommitteesStack.Screen name="PayoutClaim" component={PayoutClaimScreen} />
+      <CommitteesStack.Screen name="PostPayout" component={PostPayoutScreen} />
+      <CommitteesStack.Screen name="EdgeCases" component={EdgeCasesScreen} />
+      <CommitteesStack.Screen name="WelfarePool" component={WelfarePoolScreen} />
+      <CommitteesStack.Screen name="ManagerVote" component={ManagerVoteScreen} />
+    </CommitteesStack.Navigator>
+  );
+}
+
+function AIStackNav() {
+  return (
+    <AIStack.Navigator screenOptions={{ headerShown: false }}>
+      <AIStack.Screen name="AiMain" component={AiMainScreen} />
+      <AIStack.Screen name="AiChat" component={AiChatScreen} />
+      <AIStack.Screen name="RizqScore" component={RizqScoreScreen} />
+    </AIStack.Navigator>
+  );
+}
+
+function CreateFlowStackNav() {
+  return (
+    <CreateFlowStack.Navigator screenOptions={{ headerShown: false }}>
+      <CreateFlowStack.Screen name="CreateCommittee" component={CreateKametiWizardScreen} />
+      <CreateFlowStack.Screen
+        name="CreateCommitteeSuccess"
+        component={CreateKametiSuccessScreen}
+      />
+    </CreateFlowStack.Navigator>
+  );
+}
+
+function ProfileStackNav() {
+  return (
+    <ProfileStack.Navigator screenOptions={{ headerShown: false }}>
+      <ProfileStack.Screen name="ProfileMain" component={ProfileMainScreen} />
+      <ProfileStack.Screen name="SettingsMain" component={SettingsMainScreen} />
+      <ProfileStack.Screen name="WalletMain" component={WalletMainScreen} />
+      <ProfileStack.Screen name="WalletDeposit" component={WalletDepositScreen} />
+      <ProfileStack.Screen name="WalletHistory" component={WalletHistoryScreen} />
+      <ProfileStack.Screen name="WalletDetail" component={WalletDetailScreen} />
+      <ProfileStack.Screen name="ProLanding" component={ProLandingScreen} />
+      <ProfileStack.Screen
+        name="ProPaymentConfirmed"
+        component={ProPaymentConfirmedScreen}
+      />
+      <ProfileStack.Screen name="ProRenewal" component={ProRenewalScreen} />
+    </ProfileStack.Navigator>
   );
 }
 
@@ -104,70 +251,44 @@ function MainTabs() {
     >
       <Tabs.Screen
         name="HomeTab"
-        component={DashboardScreen}
+        component={HomeScreen}
         options={{
           title: "Home",
-          tabBarIcon: ({ color, size, focused }) => (
-            <TabIcon
-              color={color}
-              active={focused}
-              icon={<House color={color} size={size ?? 24} weight="regular" />}
-            />
-          ),
+          tabBarIcon: homeTabBarIcon,
         }}
       />
       <Tabs.Screen
-        name="GoalsTab"
-        component={GoalsStackNav}
+        name="CommitteesTab"
+        component={CommitteesStackNav}
         options={{
-          title: "Goals",
-          tabBarIcon: ({ color, size, focused }) => (
-            <TabIcon
-              color={color}
-              active={focused}
-              icon={<Target color={color} size={size ?? 24} weight="regular" />}
-            />
-          ),
+          title: "Committees",
+          tabBarIcon: committeesTabBarIcon,
         }}
       />
       <Tabs.Screen
         name="CreateTab"
-        component={CreateGoalScreen}
+        component={CreateFlowStackNav}
         options={{
           title: "",
-          tabBarIcon: ({ focused }) => (
-            <View style={[styles.plusWrap, focused && styles.plusWrapOn]}>
-              <PlusCircle color={colors.textInverse} size={30} weight="fill" />
-            </View>
-          ),
+          tabBarIcon: createTabBarIcon,
+          popToTopOnBlur: true,
+          unmountOnBlur: true,
         }}
       />
       <Tabs.Screen
-        name="CoachTab"
-        component={AICoachingScreen}
+        name="AITab"
+        component={AIStackNav}
         options={{
-          title: "AI Coach",
-          tabBarIcon: ({ color, size, focused }) => (
-            <TabIcon
-              color={color}
-              active={focused}
-              icon={<Sparkle color={color} size={size ?? 24} weight="regular" />}
-            />
-          ),
+          title: "Rizq AI",
+          tabBarIcon: aiTabBarIcon,
         }}
       />
       <Tabs.Screen
-        name="WalletTab"
-        component={WalletScreen}
+        name="ProfileTab"
+        component={ProfileStackNav}
         options={{
-          title: "Wallet",
-          tabBarIcon: ({ color, size, focused }) => (
-            <TabIcon
-              color={color}
-              active={focused}
-              icon={<Wallet color={color} size={size ?? 24} weight="regular" />}
-            />
-          ),
+          title: "Profile",
+          tabBarIcon: profileTabBarIcon,
         }}
       />
     </Tabs.Navigator>
@@ -175,21 +296,37 @@ function MainTabs() {
 }
 
 function AuthFlow() {
+  const authToken = useAppStore((s) => s.authToken);
+  const hasCompletedOnboarding = useAppStore((s) => s.hasCompletedOnboarding);
   return (
-    <AuthStack.Navigator screenOptions={{ headerShown: false }} initialRouteName="Splash">
-      <AuthStack.Screen name="Splash" component={SplashScreen} />
-      <AuthStack.Screen name="Welcome" component={WelcomeScreen} />
-      <AuthStack.Screen name="ConnectWallet" component={ConnectWalletScreen} />
+    <AuthStack.Navigator
+      screenOptions={{ headerShown: false }}
+      initialRouteName={authToken ? (hasCompletedOnboarding ? "OnboardingAuth" : "Onboarding05") : "OnboardingAuth"}
+    >
+      <AuthStack.Screen name="Onboarding01" component={Onboarding01SplashScreen} />
+      <AuthStack.Screen name="Onboarding02" component={Onboarding02WelcomeScreen} />
+      <AuthStack.Screen name="Onboarding03" component={Onboarding03CommitteeScreen} />
+      <AuthStack.Screen name="Onboarding04" component={Onboarding04SafetyScreen} />
+      <AuthStack.Screen name="OnboardingAuth" component={OnboardingAuthScreen} />
+      <AuthStack.Screen name="Onboarding05" component={Onboarding05PhoneScreen} />
+      <AuthStack.Screen name="Onboarding06" component={Onboarding06OtpScreen} />
+      <AuthStack.Screen name="Onboarding07" component={Onboarding07KycScreen} />
+      <AuthStack.Screen name="Onboarding08" component={Onboarding08KycPendingScreen} />
+      <AuthStack.Screen name="Onboarding09" component={Onboarding09NomineeScreen} />
+      <AuthStack.Screen name="Onboarding10" component={Onboarding10WalletSetupScreen} />
+      <AuthStack.Screen name="Onboarding11" component={Onboarding11ProfileScreen} />
+      <AuthStack.Screen name="Onboarding12" component={Onboarding12StartScreen} />
     </AuthStack.Navigator>
   );
 }
 
 export function RootNavigator() {
-  const wallet = useAppStore((s) => s.wallet);
+  const authToken = useAppStore((s) => s.authToken);
+  const hasCompletedOnboarding = useAppStore((s) => s.hasCompletedOnboarding);
 
   return (
     <RootStack.Navigator screenOptions={{ headerShown: false }}>
-      {!wallet ? (
+      {!authToken || !hasCompletedOnboarding ? (
         <RootStack.Screen name="Auth" component={AuthFlow} />
       ) : (
         <RootStack.Screen name="Main" component={MainTabs} />

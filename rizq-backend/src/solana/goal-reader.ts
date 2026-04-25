@@ -1,21 +1,15 @@
 import { Connection, PublicKey } from "@solana/web3.js";
 import { config } from "../config";
-import type { GoalContext } from "../ai/coaching-agent";
+import type { CommitteeCoachingContext } from "../ai/coaching-agent";
 
-export type GoalRow = {
+export type CommitteeRow = {
   id: string;
-  pda_address: string;
-  owner: string;
-  goal_name?: string;
-  goal_type?: string;
-  target_usdc?: number;
-  current_usdc?: number;
-  deadline?: string;
-  historical_completion_rate?: number;
-  yes_count?: number;
-  no_count?: number;
-  last_week_deposit?: number;
-  expo_push_token?: string | null;
+  pda_address?: string | null;
+  name?: string | null;
+  current_cycle?: number | null;
+  total_cycles?: number | null;
+  contribution_amount?: number | null;
+  next_cycle_date?: string | Date | null;
 };
 
 /** Fetch PKR per USDC — CoinGecko public endpoint when no API key */
@@ -33,54 +27,48 @@ export async function fetchPkrRate(): Promise<number> {
   }
 }
 
+export function derivePaymentStatusFromCycleDate(
+  nextCycleDate: Date
+): CommitteeCoachingContext["paymentStatus"] {
+  const msLeft = nextCycleDate.getTime() - Date.now();
+  if (msLeft < 0) return "overdue";
+  if (msLeft <= 3 * 86_400_000) return "due_soon";
+  return "paid";
+}
+
 /**
- * Reads on-chain goal (placeholder) + merges DB row for coaching context.
- * Replace with Anchor IDL + program.account once IDL is committed.
+ * Builds coaching context from committee DB row and optional on-chain signal checks.
+ * NOTE: Program account fetch is best-effort until committee account layout is finalized.
  */
-export async function fetchGoalContext(goalRow: GoalRow): Promise<GoalContext> {
+export async function fetchCommitteeCoachingContext(
+  committeeRow: CommitteeRow,
+  languagePref: CommitteeCoachingContext["languagePref"] = "mixed"
+): Promise<CommitteeCoachingContext> {
   const connection = new Connection(config.solanaRpcUrl, "confirmed");
   const pkrRate = await fetchPkrRate();
-
-  let deadlineTs = Math.floor(Date.now() / 1000) + 86400 * 30;
-  if (goalRow.deadline) {
-    deadlineTs = Math.floor(new Date(goalRow.deadline).getTime() / 1000);
-  }
-
-  const targetUsdc = Number(goalRow.target_usdc ?? 0) / 1_000_000 || 100;
-  let currentUsdc = Number(goalRow.current_usdc ?? 0) / 1_000_000;
+  const nextCycleDate = committeeRow.next_cycle_date
+    ? new Date(committeeRow.next_cycle_date)
+    : new Date(Date.now() + 7 * 86_400_000);
 
   try {
-    const pk = new PublicKey(goalRow.pda_address);
+    if (!committeeRow.pda_address) {
+      throw new Error("missing pda address");
+    }
+    const pk = new PublicKey(committeeRow.pda_address);
     await connection.getAccountInfo(pk);
   } catch {
     // ignore
   }
 
-  const pct =
-    targetUsdc > 0 ? Math.round((currentUsdc / targetUsdc) * 100) : 0;
-  const daysLeft = Math.max(
-    0,
-    Math.ceil((deadlineTs * 1000 - Date.now()) / 86400000)
-  );
-
-  const weeksLeft = Math.max(1, Math.ceil(daysLeft / 7));
-  const weeklyNeeded =
-    targetUsdc > currentUsdc
-      ? Math.max(0, (targetUsdc - currentUsdc) / weeksLeft)
-      : 0;
-
   return {
-    goalName: goalRow.goal_name ?? "Goal",
-    goalType: goalRow.goal_type ?? "Custom",
-    targetUSDC: targetUsdc,
-    deadline: new Date(deadlineTs * 1000).toISOString(),
-    pct,
-    daysLeft,
-    weeklyNeeded,
-    completionRate: goalRow.historical_completion_rate ?? 100,
+    committeeName: committeeRow.name ?? "Rizq Committee",
+    cycleNumber: Math.max(1, Number(committeeRow.current_cycle ?? 1)),
+    totalCycles: Math.max(1, Number(committeeRow.total_cycles ?? 1)),
+    contributionUSDC:
+      Math.max(0, Number(committeeRow.contribution_amount ?? 0)) / 1_000_000,
+    nextCycleDateIso: nextCycleDate.toISOString(),
+    paymentStatus: derivePaymentStatusFromCycleDate(nextCycleDate),
+    languagePref,
     pkrRate,
-    yesCount: goalRow.yes_count ?? 0,
-    noCount: goalRow.no_count ?? 0,
-    lastWeekDeposit: Number(goalRow.last_week_deposit ?? 0) / 1_000_000,
   };
 }

@@ -9,11 +9,12 @@ import { useAppStore } from "../store/useAppStore";
 import { fetchCoaching } from "../api/rizqApi";
 
 export function AICoachingScreen() {
-  const topGoalId = useAppStore((s) => s.activeGoals[0]?.id);
+  const topCommitteeId = useAppStore((s) => s.committees[0]?.id);
+  const userId = useAppStore((s) => s.userId);
   const coachingQuery = useQuery({
-    queryKey: ["coaching", topGoalId],
-    queryFn: () => fetchCoaching(topGoalId as string),
-    enabled: !!topGoalId,
+    queryKey: ["coaching", topCommitteeId, userId],
+    queryFn: () => fetchCoaching(topCommitteeId as string, userId),
+    enabled: !!topCommitteeId,
     refetchInterval: 30000,
   });
 
@@ -22,7 +23,7 @@ export function AICoachingScreen() {
       <ScrollView contentContainerStyle={styles.root}>
         <Text style={styles.title}>AI Coaching</Text>
         <Text style={styles.badge}>Powered by Claude</Text>
-        <Text style={styles.section}>This Week</Text>
+        <Text style={styles.section}>This Week's Committee Coaching</Text>
         <CoachingCard
           message={
             coachingQuery.data?.message ??

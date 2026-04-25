@@ -5,8 +5,9 @@ import { colors, radii, spacing, typography } from "../theme/tokens";
 
 export function ShareInviteScreen() {
   const route = useRoute();
-  const { goalId } = route.params as { goalId: string };
-  const link = `https://rizq.app/goal/${goalId}`;
+  const params = route.params as { goalId?: string; committeeId?: string };
+  const committeeId = params.committeeId ?? params.goalId ?? "";
+  const link = `https://rizq.app/committee/${committeeId}`;
 
   return (
     <View style={styles.root}>
@@ -15,7 +16,7 @@ export function ShareInviteScreen() {
         <Text style={styles.link}>{link}</Text>
         <Pressable
           style={styles.btn}
-          onPress={() => Share.share({ message: `Stake on my Rizq goal: ${link}` })}
+          onPress={() => Share.share({ message: `Join my Rizq committee: ${link}` })}
         >
           <Text style={styles.btnText}>Share</Text>
         </Pressable>
@@ -23,7 +24,7 @@ export function ShareInviteScreen() {
       <Text style={styles.previewLabel}>Preview</Text>
       <View style={styles.preview}>
         <Text style={styles.previewText}>
-          Stake USDC on whether I&apos;ll hit my savings goal on Rizq.
+          Join this digital kameti to save in USDC with transparent payout cycles.
         </Text>
       </View>
     </View>

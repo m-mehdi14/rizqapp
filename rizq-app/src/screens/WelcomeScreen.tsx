@@ -21,10 +21,10 @@ const SLIDES = [
     visual: '💬 "Kameti ka paisay kahan hain?"',
   },
   {
-    title: "Your friends bet on you.",
-    body: "They stake USDC. Winners paid automatically. No middleman.",
+    title: "Your members contribute together.",
+    body: "Every cycle stays transparent in USDC, with fixed payout order and no middleman risk.",
     glow: ["#0F2E1F", colors.bgBase],
-    visual: "🟢 YES   $18 USDC   🔴 NO",
+    visual: "👥 10 members · $50 USDC each cycle",
   },
   {
     title: "Your personal savings coach.",

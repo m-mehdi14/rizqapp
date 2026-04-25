@@ -1,52 +1,59 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { config } from "../config";
 
-export type GoalContext = {
-  goalName: string;
-  goalType: string;
-  targetUSDC: number;
-  deadline: string;
-  pct: number;
-  daysLeft: number;
-  weeklyNeeded: number;
-  completionRate: number;
+export type CommitteeCoachingContext = {
+  committeeName: string;
+  cycleNumber: number;
+  totalCycles: number;
+  contributionUSDC: number;
+  nextCycleDateIso: string;
+  paymentStatus: "paid" | "due_soon" | "overdue";
+  languagePref: "english" | "urdu" | "mixed";
   pkrRate: number;
-  yesCount: number;
-  noCount: number;
-  lastWeekDeposit: number;
 };
 
 const MODEL = "claude-sonnet-4-20250514";
 
-export function buildSystemPrompt(ctx: GoalContext): string {
+export function buildSystemPrompt(ctx: CommitteeCoachingContext): string {
+  const daysLeft = Math.max(
+    0,
+    Math.ceil((new Date(ctx.nextCycleDateIso).getTime() - Date.now()) / 86_400_000)
+  );
+  const toneByStatus =
+    ctx.paymentStatus === "overdue"
+      ? "User is overdue; be direct but kind."
+      : ctx.paymentStatus === "due_soon"
+        ? "User payment is due soon; keep urgency moderate."
+        : "User is on track; reinforce consistency.";
+
   return `
-You are Rizq, an AI savings coach for Pakistani users.
+You are Rizq, an AI committee savings coach for Pakistani users.
 You write in a warm, encouraging voice mixing English and Urdu naturally
 (the way educated Pakistanis actually speak — not formal translations).
 
 User context:
-- Goal: ${ctx.goalName} (${ctx.goalType})
-- Target: $${ctx.targetUSDC} USDC by ${ctx.deadline}
-- Progress: ${ctx.pct}% complete (${ctx.daysLeft} days left)
-- Weekly deposit needed: $${ctx.weeklyNeeded} USDC
-- Past goal completion rate: ${ctx.completionRate}%
+- Committee: ${ctx.committeeName}
+- Cycle: ${ctx.cycleNumber}/${ctx.totalCycles}
+- Contribution due: $${ctx.contributionUSDC.toFixed(2)} USDC
+- Next due date: ${ctx.nextCycleDateIso} (${daysLeft} days left)
+- Payment status: ${ctx.paymentStatus}
+- Preferred language: ${ctx.languagePref}
 - Current PKR/USDC rate: ${ctx.pkrRate}
-- Friends betting YES: ${ctx.yesCount}  |  NO: ${ctx.noCount}
-- Last week deposit: $${ctx.lastWeekDeposit} USDC
+- ${toneByStatus}
 
 Rules:
-1. Give ONE specific saving action for this week (not generic advice).
-2. Reference the friends betting — it creates social accountability.
-3. If PKR rate is above 280, suggest it is a good week to convert.
+1. This is a Shariah-compliant rotating committee; never mention betting, staking, or gambling.
+2. Give ONE specific saving action for this week (not generic advice).
+3. If PKR rate is above 280, suggest it may be a good week to convert remittance to USDC.
 4. Maximum 80 words. Natural Urdu phrases welcome (yaar, bhai, theek hai).
-5. Be honest — if the user is behind, say so directly but kindly.
-6. Never mention competitors. Never give financial advice.
-7. End with an encouraging one-liner in either language.
+5. If payment is overdue, say it clearly and suggest immediate next step.
+6. Never give investment advice; stay on budgeting and timely contribution.
+7. End with an encouraging one-liner in either English or Urdu.
 `.trim();
 }
 
 export async function generateCoaching(
-  ctx: GoalContext,
+  ctx: CommitteeCoachingContext,
   userPrompt = "Generate my weekly coaching message."
 ): Promise<string> {
   if (!config.anthropicApiKey) {
