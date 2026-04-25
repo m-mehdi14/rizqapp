@@ -1,0 +1,43 @@
+services:
+  - type: web
+    name: rizq-backend
+    runtime: node
+    rootDir: rizq-backend
+    plan: starter
+    buildCommand: npm ci && npm run render-build
+    startCommand: npm run start
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: 20
+      - key: PORT
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: NEON_DATABASE_URL
+        sync: false
+      - key: HELIUS_API_KEY
+        sync: false
+      - key: HELIUS_RPC_URL
+        sync: false
+      - key: SOLANA_NETWORK
+        sync: false
+      - key: SAVINGS_GOAL_PROGRAM_ID
+        sync: false
+      - key: PREDICTION_POOL_PROGRAM_ID
+        sync: false
+      - key: PAYOUT_PROGRAM_ID
+        sync: false
+      - key: TREASURY_WALLET
+        sync: false
+      - key: COINGECKO_API_KEY
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+      - key: AUTH_JWT_SECRET
+        sync: false
