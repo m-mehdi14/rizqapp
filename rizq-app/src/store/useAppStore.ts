@@ -23,6 +23,7 @@ export type Committee = {
 };
 // Legacy alias to keep older goal-based screens compiling during migration.
 export type Goal = Committee;
+export type WalletProvider = "phantom" | "embedded" | "solflare" | "backpack";
 
 type AppState = {
   authToken: string | null;
@@ -31,7 +32,7 @@ type AppState = {
   displayName: string;
   username: string;
   wallet: string | null;
-  walletProvider: "phantom" | "embedded" | null;
+  walletProvider: WalletProvider | null;
   hasCompletedOnboarding: boolean;
   kycStatus: "unverified" | "pending" | "verified";
   phoneVerificationSkipped: boolean;
@@ -47,10 +48,10 @@ type AppState = {
   }) => void;
   setProfileIdentity: (input: { displayName?: string; username?: string }) => void;
   setWallet: (w: string | null) => void;
-  setWalletProvider: (provider: "phantom" | "embedded" | null) => void;
+  setWalletProvider: (provider: WalletProvider | null) => void;
   setWalletConnection: (
     wallet: string | null,
-    provider?: "phantom" | "embedded" | null
+    provider?: WalletProvider | null
   ) => void;
   setHasCompletedOnboarding: (v: boolean) => void;
   setKycStatus: (status: AppState["kycStatus"]) => void;

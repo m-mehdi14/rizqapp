@@ -7,28 +7,33 @@ type Props = {
   onChange: (text: string) => void;
   onSend: () => void;
   sending?: boolean;
+  hideComposer?: boolean;
   recent?: Array<{ id: string; title: string; message: string; created_at: string }>;
 };
 
-export function AnnouncementSender({ value, onChange, onSend, sending, recent }: Props) {
+export function AnnouncementSender({ value, onChange, onSend, sending, recent, hideComposer }: Props) {
   return (
     <View style={styles.wrap}>
-      <Text style={styles.heading}>Send Announcement</Text>
-      <TextInput
-        style={styles.input}
-        value={value}
-        onChangeText={onChange}
-        placeholder="Type message for all members..."
-        placeholderTextColor={colors.textMuted}
-        multiline
-      />
-      <Pressable
-        style={styles.button}
-        onPress={onSend}
-        disabled={sending}
-      >
-        <Text style={styles.buttonText}>{sending ? "Sending..." : "Send to All"}</Text>
-      </Pressable>
+      {!hideComposer ? (
+        <>
+          <Text style={styles.heading}>Send Announcement</Text>
+          <TextInput
+            style={styles.input}
+            value={value}
+            onChangeText={onChange}
+            placeholder="Type message for all members..."
+            placeholderTextColor={colors.textMuted}
+            multiline
+          />
+          <Pressable
+            style={styles.button}
+            onPress={onSend}
+            disabled={sending}
+          >
+            <Text style={styles.buttonText}>{sending ? "Sending..." : "Send to All"}</Text>
+          </Pressable>
+        </>
+      ) : null}
       {recent && recent.length > 0 ? (
         <View style={styles.recentWrap}>
           <Text style={styles.recentHeading}>Recent announcements</Text>
@@ -38,7 +43,9 @@ export function AnnouncementSender({ value, onChange, onSend, sending, recent }:
             </Text>
           ))}
         </View>
-      ) : null}
+      ) : (
+        <Text style={styles.recentItem}>No announcements yet.</Text>
+      )}
     </View>
   );
 }

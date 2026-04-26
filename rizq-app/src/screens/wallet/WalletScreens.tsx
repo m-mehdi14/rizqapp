@@ -2,13 +2,13 @@ import React, { useMemo, useState } from "react";
 import { Linking, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useNavigation, useRoute } from "@react-navigation/native";
 import type { NavigationProp, ParamListBase, RouteProp } from "@react-navigation/native";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import Clipboard from "@react-native-clipboard/clipboard";
-import { Copy, QrCode, Wallet } from "phosphor-react-native";
+import QRCode from "react-native-qrcode-svg";
+import { Copy, Wallet } from "phosphor-react-native";
 import { GlassCard } from "../../components/GlassCard";
 import { ScreenShell } from "../../components/ScreenShell";
 import { fetchWalletTransactions, type WalletTransactionRow } from "../../api/rizqApi";
-import { usePhantomWallet } from "../../hooks/usePhantomWallet";
 import { useWeb3AuthWallet } from "../../hooks/useWeb3AuthWallet";
 import { useAppStore } from "../../store/useAppStore";
 import { colors, radii, spacing, typography } from "../../theme/tokens";
@@ -72,10 +72,8 @@ function toWalletTx(rows: WalletTransactionRow[]): WalletTx[] {
 export function WalletMainScreen() {
   const nav = useNavigation<NavigationProp<ParamListBase>>();
   const wallet = useAppStore((s) => s.wallet);
-  const walletProvider = useAppStore((s) => s.walletProvider);
   const usdcBalance = useAppStore((s) => s.usdcBalance);
   const committees = useAppStore((s) => s.committees);
-  const { connect } = usePhantomWallet();
   const { connectWeb3AuthWallet } = useWeb3AuthWallet();
   const [connectError, setConnectError] = useState<string | null>(null);
   const txQuery = useQuery({
@@ -113,7 +111,7 @@ export function WalletMainScreen() {
         <Text style={styles.balanceValue}>${availableUsdc.toFixed(2)} USDC</Text>
         <Text style={styles.balanceSub}>
           {wallet
-            ? `${walletProvider === "embedded" ? "Web3Auth In-App" : "Phantom"} · ${wallet.slice(0, 4)}...${wallet.slice(-4)}`
+            ? `In-App Wallet · ${wallet.slice(0, 4)}...${wallet.slice(-4)}`
             : "Wallet not connected"}
         </Text>
         <View style={styles.breakdownRow}>
@@ -153,34 +151,25 @@ export function WalletMainScreen() {
         <Pressable style={styles.primaryBtn} onPress={() => nav.navigate("WalletDeposit")}>
           <Text style={styles.primaryText}>Deposit</Text>
         </Pressable>
-        <Pressable
-          style={styles.secondaryBtn}
-          onPress={async () => {
-            try {
-              setConnectError(null);
-              await connect();
-            } catch (error) {
-              setConnectError(error instanceof Error ? error.message : "Unable to connect Phantom.");
-            }
-          }}
-        >
-          <Text style={styles.secondaryText}>Connect Phantom</Text>
-        </Pressable>
-      </View>
-      <View style={styles.actionRow}>
-        <Pressable
-          style={styles.secondaryBtn}
-          onPress={async () => {
-            try {
-              setConnectError(null);
-              await connectWeb3AuthWallet();
-            } catch (error) {
-              setConnectError(error instanceof Error ? error.message : "Unable to connect Web3Auth.");
-            }
-          }}
-        >
-          <Text style={styles.secondaryText}>Connect Web3Auth</Text>
-        </Pressable>
+        {!wallet ? (
+          <Pressable
+            style={styles.secondaryBtn}
+            onPress={async () => {
+              try {
+                setConnectError(null);
+                await connectWeb3AuthWallet();
+              } catch (error) {
+                setConnectError(error instanceof Error ? error.message : "Unable to connect in-app wallet.");
+              }
+            }}
+          >
+            <Text style={styles.secondaryText}>Connect in-app wallet</Text>
+          </Pressable>
+        ) : (
+          <View style={styles.secondaryBtn}>
+            <Text style={styles.secondaryText}>Wallet connected</Text>
+          </View>
+        )}
       </View>
       {connectError ? <Text style={styles.errorText}>{connectError}</Text> : null}
 
@@ -202,9 +191,43 @@ export function WalletMainScreen() {
 }
 
 export function WalletDepositScreen() {
+  const queryClient = useQueryClient();
   const [copied, setCopied] = useState(false);
+  const [isPollingDeposit, setIsPollingDeposit] = useState(false);
+  const [pollMessage, setPollMessage] = useState<string | null>(null);
   const wallet = useAppStore((s) => s.wallet);
+  const usdcBalance = useAppStore((s) => s.usdcBalance);
   const fullAddress = wallet ?? "";
+  const qrValue = fullAddress ? `solana:${fullAddress}` : "";
+  const baselineBalanceUsdc = usdcBalance / 1_000_000;
+
+  const checkForDeposit = async () => {
+    if (!wallet) {
+      setPollMessage("Connect wallet first to detect incoming USDC.");
+      return;
+    }
+    setIsPollingDeposit(true);
+    setPollMessage("Checking chain for your incoming transfer...");
+    let found = false;
+    for (let attempt = 0; attempt < 6; attempt += 1) {
+      try {
+        const updatedUsdc = useAppStore.getState().usdcBalance / 1_000_000;
+        await queryClient.invalidateQueries({ queryKey: ["wallet-usdc", wallet] });
+        await queryClient.refetchQueries({ queryKey: ["wallet-usdc", wallet], type: "active" });
+        const latestUsdc = useAppStore.getState().usdcBalance / 1_000_000;
+        if (latestUsdc > Math.max(updatedUsdc, baselineBalanceUsdc) + 0.000001) {
+          found = true;
+          break;
+        }
+      } catch {
+        // retry after delay
+      }
+      await new Promise((resolve) => setTimeout(resolve, 5000));
+    }
+    setIsPollingDeposit(false);
+    setPollMessage(found ? "Deposit detected. Wallet balance updated." : "No new deposit detected yet. Try again in a moment.");
+  };
+
   return (
     <Layout
       title="Deposit USDC"
@@ -212,7 +235,16 @@ export function WalletDepositScreen() {
     >
       <GlassCard style={styles.qrCard}>
         <View style={styles.qrBox}>
-          <QrCode color={colors.textPrimary} size={72} />
+          {fullAddress ? (
+            <QRCode
+              value={qrValue}
+              size={126}
+              color={colors.deepNavy}
+              backgroundColor={colors.textPrimary}
+            />
+          ) : (
+            <Text style={styles.step}>Connect wallet to show QR</Text>
+          )}
         </View>
         <Text style={styles.address}>
           {wallet ? `${wallet.slice(0, 10)}...${wallet.slice(-8)}` : "No wallet connected"}
@@ -240,9 +272,10 @@ export function WalletDepositScreen() {
         <Text style={styles.step}>3. Confirm transaction and return to app.</Text>
       </GlassCard>
 
-      <Pressable style={styles.primaryBtn}>
-        <Text style={styles.primaryText}>I have sent it</Text>
+      <Pressable style={[styles.primaryBtn, isPollingDeposit && { opacity: 0.7 }]} disabled={isPollingDeposit} onPress={checkForDeposit}>
+        <Text style={styles.primaryText}>{isPollingDeposit ? "Checking..." : "I have sent it"}</Text>
       </Pressable>
+      {pollMessage ? <Text style={styles.bannerText}>{pollMessage}</Text> : null}
     </Layout>
   );
 }

@@ -279,6 +279,7 @@ export async function registerUser(input: {
   wallet: string;
   username?: string;
   displayName?: string;
+  devicePushToken?: string;
 }): Promise<RegisteredUser> {
   return await http<RegisteredUser>("/api/users/register", {
     method: "POST",
@@ -286,7 +287,22 @@ export async function registerUser(input: {
       wallet_address: input.wallet,
       username: input.username,
       display_name: input.displayName,
+      device_push_token: input.devicePushToken,
     }),
+  });
+}
+
+export async function registerDevicePushToken(input: {
+  wallet: string;
+  devicePushToken: string;
+  username?: string;
+  displayName?: string;
+}): Promise<void> {
+  await registerUser({
+    wallet: input.wallet,
+    username: input.username,
+    displayName: input.displayName,
+    devicePushToken: input.devicePushToken,
   });
 }
 
@@ -578,7 +594,7 @@ export async function createStake(input: {
 }
 
 export async function fetchCoaching(
-  goalId: string,
+  committeeId: string,
   userId?: string | null
 ): Promise<CoachingRow | null> {
   const userQuery =
@@ -587,11 +603,11 @@ export async function fetchCoaching(
       : "";
   try {
     return await http<CoachingRow | null>(
-      `/api/committees/${encodeURIComponent(goalId)}/coaching${userQuery}`
+      `/api/committees/${encodeURIComponent(committeeId)}/coaching${userQuery}`
     );
   } catch {
     return await http<CoachingRow | null>(
-      `/api/goals/${encodeURIComponent(goalId)}/coaching`
+      `/api/goals/${encodeURIComponent(committeeId)}/coaching`
     );
   }
 }

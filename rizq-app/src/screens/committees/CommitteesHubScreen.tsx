@@ -28,6 +28,12 @@ function CtaButton({
   );
 }
 
+function dueLabel(daysLeft: number) {
+  if (daysLeft <= 0) return "Due today";
+  if (daysLeft === 1) return "Due tomorrow";
+  return `${daysLeft} days left`;
+}
+
 export function CommitteesHubScreen() {
   const nav = useNavigation<NavigationProp<ParamListBase>>();
   const committees = useAppStore((s) => s.committees);
@@ -64,6 +70,13 @@ export function CommitteesHubScreen() {
           <SectionHeader title="Committees I Manage" />
           {managedCommittees.map((item) => (
             <GlassCard key={item.id} style={styles.card}>
+              {Math.max(0, item.daysLeft) <= 2 ? (
+                <Text style={Math.max(0, item.daysLeft) === 0 ? styles.alertDanger : styles.alertWarning}>
+                  {Math.max(0, item.daysLeft) === 0
+                    ? "Action required: cycle payment due today"
+                    : `Upcoming due: ${dueLabel(Math.max(0, item.daysLeft))}`}
+                </Text>
+              ) : null}
               <View style={styles.cardTopRow}>
                 <Text style={styles.cardTitle}>{item.name}</Text>
                 <Text
@@ -76,7 +89,9 @@ export function CommitteesHubScreen() {
                 </Text>
               </View>
               <Text style={styles.cardMeta}>{`${item.memberCount ?? 0}/${item.maxMembers ?? 0} members`}</Text>
-              <Text style={styles.cardSub}>{`Next payout in ${Math.max(0, item.daysLeft)} days`}</Text>
+              <Text style={styles.cardSub}>
+                {`Next cycle: ${item.nextCycleDate ? new Date(item.nextCycleDate).toLocaleDateString() : "TBD"} • ${dueLabel(Math.max(0, item.daysLeft))}`}
+              </Text>
               {item.inviteCode ? (
                 <Pressable
                   style={styles.codeChip}
@@ -105,12 +120,21 @@ export function CommitteesHubScreen() {
           <SectionHeader title="Committees I Joined" />
           {joinedCommittees.map((item) => (
             <GlassCard key={item.id} style={styles.card}>
+              {Math.max(0, item.daysLeft) <= 2 ? (
+                <Text style={Math.max(0, item.daysLeft) === 0 ? styles.alertDanger : styles.alertWarning}>
+                  {Math.max(0, item.daysLeft) === 0
+                    ? "Your contribution is due today"
+                    : `Your due date is near (${dueLabel(Math.max(0, item.daysLeft))})`}
+                </Text>
+              ) : null}
               <View style={styles.cardTopRow}>
                 <Text style={styles.cardTitle}>{item.name}</Text>
                 <CheckCircle color={colors.info} size={18} />
               </View>
               <Text style={styles.cardMeta}>{`Cycle ${item.currentCycle ?? 1}/${item.totalCycles ?? 1}`}</Text>
-              <Text style={styles.cardSub}>{item.status ?? "active"}</Text>
+              <Text style={styles.cardSub}>
+                {`${item.status ?? "active"} • ${item.nextCycleDate ? new Date(item.nextCycleDate).toLocaleDateString() : "TBD"} • ${dueLabel(Math.max(0, item.daysLeft))}`}
+              </Text>
               <Pressable
                 style={styles.linkBtn}
                 onPress={() =>
@@ -195,6 +219,16 @@ const styles = StyleSheet.create({
   },
   badgeSuccess: { color: colors.success, borderColor: "rgba(0,230,118,0.45)", backgroundColor: "rgba(0,230,118,0.12)" },
   badgeWarning: { color: colors.warning, borderColor: "rgba(255,179,0,0.45)", backgroundColor: "rgba(255,179,0,0.12)" },
+  alertWarning: {
+    color: colors.warning,
+    fontSize: typography.caption,
+    fontWeight: "700",
+  },
+  alertDanger: {
+    color: colors.danger,
+    fontSize: typography.caption,
+    fontWeight: "700",
+  },
   linkBtn: { marginTop: 3, alignSelf: "flex-start" },
   linkText: { color: colors.info, fontSize: typography.caption, textDecorationLine: "underline" },
   plusInline: {

@@ -6,6 +6,7 @@ import { PlusCircle } from "phosphor-react-native";
 import { colors } from "../theme/tokens";
 import { useAppStore } from "../store/useAppStore";
 import { HomeScreen } from "../screens/home/HomeScreen";
+import { NotificationsScreen } from "../screens/home/NotificationsScreen";
 import { AiChatScreen, AiMainScreen, RizqScoreScreen } from "../screens/ai/AiScreens";
 import { CommitteeDashboardScreen } from "../screens/committeeDashboard/CommitteeDashboardScreen";
 import { CommitteesHubScreen } from "../screens/committees/CommitteesHubScreen";
@@ -28,6 +29,19 @@ import {
   ProPaymentConfirmedScreen,
   ProRenewalScreen,
 } from "../screens/profile/ProfileScreens";
+import {
+  SettingsAboutScreen,
+  SettingsCommunityScreen,
+  SettingsHubScreen,
+  SettingsKycStatusScreen,
+  SettingsNomineeScreen,
+  SettingsNotificationsScreen,
+  SettingsPreferencesScreen,
+  SettingsProfileScreen,
+  SettingsSecurityScreen,
+  SettingsSupportScreen,
+  SettingsWalletManagementScreen,
+} from "../screens/settings/SettingsScreens";
 import {
   EdgeCasesScreen,
   ManagerVoteScreen,
@@ -105,6 +119,7 @@ export type RootStackParamList = {
 const AuthStack = createNativeStackNavigator<AuthStackParamList>();
 const CommitteesStack = createNativeStackNavigator<CommitteesStackParamList>();
 const CreateFlowStack = createNativeStackNavigator<CommitteesStackParamList>();
+const HomeStack = createNativeStackNavigator();
 const AIStack = createNativeStackNavigator();
 const ProfileStack = createNativeStackNavigator();
 const Tabs = createBottomTabNavigator<MainTabParamList>();
@@ -196,6 +211,15 @@ function AIStackNav() {
   );
 }
 
+function HomeStackNav() {
+  return (
+    <HomeStack.Navigator screenOptions={{ headerShown: false }}>
+      <HomeStack.Screen name="HomeMain" component={HomeScreen} />
+      <HomeStack.Screen name="Notifications" component={NotificationsScreen} />
+    </HomeStack.Navigator>
+  );
+}
+
 function CreateFlowStackNav() {
   return (
     <CreateFlowStack.Navigator screenOptions={{ headerShown: false }}>
@@ -213,6 +237,17 @@ function ProfileStackNav() {
     <ProfileStack.Navigator screenOptions={{ headerShown: false }}>
       <ProfileStack.Screen name="ProfileMain" component={ProfileMainScreen} />
       <ProfileStack.Screen name="SettingsMain" component={SettingsMainScreen} />
+      <ProfileStack.Screen name="SettingsHub" component={SettingsHubScreen} />
+      <ProfileStack.Screen name="SettingsProfile" component={SettingsProfileScreen} />
+      <ProfileStack.Screen name="SettingsKycStatus" component={SettingsKycStatusScreen} />
+      <ProfileStack.Screen name="SettingsNominee" component={SettingsNomineeScreen} />
+      <ProfileStack.Screen name="SettingsWalletManagement" component={SettingsWalletManagementScreen} />
+      <ProfileStack.Screen name="SettingsNotifications" component={SettingsNotificationsScreen} />
+      <ProfileStack.Screen name="SettingsPreferences" component={SettingsPreferencesScreen} />
+      <ProfileStack.Screen name="SettingsSecurity" component={SettingsSecurityScreen} />
+      <ProfileStack.Screen name="SettingsCommunity" component={SettingsCommunityScreen} />
+      <ProfileStack.Screen name="SettingsSupport" component={SettingsSupportScreen} />
+      <ProfileStack.Screen name="SettingsAbout" component={SettingsAboutScreen} />
       <ProfileStack.Screen name="WalletMain" component={WalletMainScreen} />
       <ProfileStack.Screen name="WalletDeposit" component={WalletDepositScreen} />
       <ProfileStack.Screen name="WalletHistory" component={WalletHistoryScreen} />
@@ -251,7 +286,7 @@ function MainTabs() {
     >
       <Tabs.Screen
         name="HomeTab"
-        component={HomeScreen}
+        component={HomeStackNav}
         options={{
           title: "Home",
           tabBarIcon: homeTabBarIcon,

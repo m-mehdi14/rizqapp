@@ -6,7 +6,7 @@ import { colors } from "./theme/tokens";
 import { RootNavigator } from "./navigation/RootNavigator";
 import { useBackendSync } from "./hooks/useBackendSync";
 import { useAuthSessionBootstrap } from "./hooks/useAuthSessionBootstrap";
-import { usePhantomWallet } from "./hooks/usePhantomWallet";
+import { usePushNotifications } from "./hooks/usePushNotifications";
 
 const queryClient = new QueryClient();
 
@@ -26,9 +26,8 @@ const navTheme = {
 
 function AppContent() {
   const { ready } = useAuthSessionBootstrap();
-  // Keep Phantom deep-link listeners active app-wide (not only on specific screens).
-  usePhantomWallet();
   useBackendSync();
+  usePushNotifications();
   if (!ready) return null;
   return (
     <NavigationContainer theme={navTheme}>

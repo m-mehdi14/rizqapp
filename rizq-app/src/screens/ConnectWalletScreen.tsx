@@ -1,25 +1,20 @@
 import React from "react";
-import { View, Text, StyleSheet, Pressable, Linking } from "react-native";
-import { usePhantomWallet } from "../hooks/usePhantomWallet";
+import { View, Text, StyleSheet, Pressable } from "react-native";
+import { useWeb3AuthWallet } from "../hooks/useWeb3AuthWallet";
 import { colors, radii, spacing, typography } from "../theme/tokens";
 
 export function ConnectWalletScreen() {
-  const { connect } = usePhantomWallet();
+  const { connectWeb3AuthWallet } = useWeb3AuthWallet();
 
   return (
     <View style={styles.root}>
-      <Text style={styles.title}>Connect with Phantom</Text>
+      <Text style={styles.title}>Connect In-App Wallet</Text>
       <Text style={styles.note}>
         Rizq never holds your private keys. All funds are secured by Solana smart
         contracts.
       </Text>
-      <Pressable style={styles.btn} onPress={connect}>
-        <Text style={styles.btnText}>Open Phantom</Text>
-      </Pressable>
-      <Pressable
-        onPress={() => Linking.openURL("https://phantom.app/download")}
-      >
-        <Text style={styles.link}>Don&apos;t have Phantom? Download it</Text>
+      <Pressable style={styles.btn} onPress={connectWeb3AuthWallet}>
+        <Text style={styles.btnText}>Continue with In-App Wallet</Text>
       </Pressable>
     </View>
   );
@@ -46,9 +41,4 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   btnText: { color: colors.deepNavy, fontWeight: "700" },
-  link: {
-    marginTop: spacing.section,
-    color: colors.accentPurple,
-    textAlign: "center",
-  },
 });

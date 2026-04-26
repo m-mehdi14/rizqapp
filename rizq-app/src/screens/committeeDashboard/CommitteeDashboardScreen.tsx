@@ -450,6 +450,17 @@ export function CommitteeDashboardScreen() {
             <TransactionHistory transactions={txRows} />
           </AccordionSection>
 
+          <AccordionSection title="Committee Announcements" defaultOpen={false}>
+            <AnnouncementSender
+              value={announcementText}
+              onChange={setAnnouncementText}
+              onSend={() => announcementMutation.mutate()}
+              sending={announcementMutation.isPending}
+              recent={announcementsQuery.data ?? []}
+              hideComposer={!isManagerView || !canManage}
+            />
+          </AccordionSection>
+
           {isManagerView && canManage ? (
             <>
               <SectionHeader title="Manager Area" />
@@ -469,16 +480,6 @@ export function CommitteeDashboardScreen() {
                       }
                       reminderMutation.mutate({ memberId: member.id, cycle });
                     }}
-                  />
-                </AccordionSection>
-
-                <AccordionSection title="Announcements">
-                  <AnnouncementSender
-                    value={announcementText}
-                    onChange={setAnnouncementText}
-                    onSend={() => announcementMutation.mutate()}
-                    sending={announcementMutation.isPending}
-                    recent={announcementsQuery.data ?? []}
                   />
                 </AccordionSection>
 

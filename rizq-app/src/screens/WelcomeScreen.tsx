@@ -75,7 +75,7 @@ export function WelcomeScreen() {
         style={styles.cta}
         onPress={() => navigation.navigate("ConnectWallet")}
       >
-        <Text style={styles.ctaText}>Connect Phantom</Text>
+        <Text style={styles.ctaText}>Connect In-App Wallet</Text>
       </Pressable>
     </View>
   );

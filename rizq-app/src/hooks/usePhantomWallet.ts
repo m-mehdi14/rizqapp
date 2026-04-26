@@ -4,7 +4,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import nacl from "tweetnacl";
 import bs58 from "bs58";
 import { Connection, PublicKey, SystemProgram, Transaction } from "@solana/web3.js";
-import { DAPP_URL, PHANTOM_UNIVERSAL, SOLANA_RPC_URL } from "../config";
+import { API_URL, DAPP_URL, PHANTOM_UNIVERSAL, SOLANA_RPC_URL } from "../config";
 import { useAppStore } from "../store/useAppStore";
 
 type PhantomSessionState = {
@@ -52,6 +52,9 @@ async function getOrCreateDappKeyPair(): Promise<nacl.BoxKeyPair> {
 function safePhantomAppUrl(): string {
   if (DAPP_URL.startsWith("https://") || DAPP_URL.startsWith("http://")) {
     return DAPP_URL;
+  }
+  if (API_URL.startsWith("https://") || API_URL.startsWith("http://")) {
+    return API_URL;
   }
   return "https://rizq.app";
 }
@@ -246,7 +249,7 @@ export function usePhantomWallet() {
 
   const connect = useCallback(async (): Promise<string> => {
     const dappKeyPair = await getOrCreateDappKeyPair();
-    const redirect = "rizq://onConnect";
+    const redirect = "rizq://";
     const params = new URLSearchParams({
       app_url: safePhantomAppUrl(),
       redirect_link: redirect,
@@ -293,6 +296,13 @@ export function usePhantomWallet() {
         const errorCode = callbackParams.get("errorCode") ?? callbackParams.get("error_code");
         if (errorCode) {
           settleError(`Phantom connection rejected (${errorCode}).`);
+          return;
+        }
+        // Some Android/Phantom paths return only rizq:// while global listeners already hydrate store.
+        const storeWallet = useAppStore.getState().wallet;
+        const storeProvider = useAppStore.getState().walletProvider;
+        if (storeProvider === "phantom" && storeWallet && storeWallet.length > 30) {
+          settleSuccess(storeWallet);
         }
       };
 
@@ -303,6 +313,11 @@ export function usePhantomWallet() {
       // Some Android builds miss the url event after app resume.
       pollId = setInterval(() => {
         Linking.getInitialURL().then(processCallbackUrl).catch(() => undefined);
+        const storeWallet = useAppStore.getState().wallet;
+        const storeProvider = useAppStore.getState().walletProvider;
+        if (storeProvider === "phantom" && storeWallet && storeWallet.length > 30) {
+          settleSuccess(storeWallet);
+        }
       }, 1200);
 
       Linking.getInitialURL().then(processCallbackUrl).catch(() => undefined);

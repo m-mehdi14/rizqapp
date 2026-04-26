@@ -21,7 +21,6 @@ import {
   createCommitteeContribution,
   fetchCommitteeHistory,
 } from "../../api/rizqApi";
-import { usePhantomWallet } from "../../hooks/usePhantomWallet";
 import { useWeb3AuthWallet } from "../../hooks/useWeb3AuthWallet";
 import { useAppStore } from "../../store/useAppStore";
 import type { CommitteesStackParamList } from "../../navigation/RootNavigator";
@@ -73,9 +72,7 @@ export function PayContributionScreen() {
   const nav = useNavigation<NavigationProp<ParamListBase>>();
   const queryClient = useQueryClient();
   const wallet = useAppStore((s) => s.wallet);
-  const walletProvider = useAppStore((s) => s.walletProvider);
   const { committee, routeCommitteeId } = useSelectedCommittee();
-  const { signAndSendDevnetProofTx: signWithPhantom } = usePhantomWallet();
   const { signAndSendDevnetProofTx: signWithWeb3Auth } = useWeb3AuthWallet();
   const amountLamports = committee?.contributionLamports ?? 0;
   const amountUsdc = amountLamports / 1_000_000;
@@ -83,6 +80,7 @@ export function PayContributionScreen() {
   const hasEnoughBalance = walletBalanceUsdc >= amountUsdc;
   const [txSignature, setTxSignature] = useState("");
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [isSigning, setIsSigning] = useState(false);
   const isSignatureValid = useMemo(() => txSignature.trim().length >= 30, [txSignature]);
 
   const payMutation = useMutation({
@@ -155,29 +153,28 @@ export function PayContributionScreen() {
         autoCorrect={false}
       />
       <Pressable
-        style={styles.secondaryBtn}
+        style={[styles.secondaryBtn, isSigning && { opacity: 0.7 }]}
+        disabled={isSigning}
         onPress={async () => {
           if (!wallet) {
             setSubmitError("Connect wallet first");
             return;
           }
           try {
+            setIsSigning(true);
             setSubmitError(null);
-            const signature =
-              walletProvider === "embedded"
-                ? await signWithWeb3Auth(wallet)
-                : await signWithPhantom(wallet);
+            const signature = await signWithWeb3Auth(wallet);
             setTxSignature(signature);
           } catch (error) {
             setSubmitError(
-              error instanceof Error ? error.message : "Failed to capture Phantom signature"
+              error instanceof Error ? error.message : "Failed to capture in-app wallet signature"
             );
+          } finally {
+            setIsSigning(false);
           }
         }}
       >
-        <Text style={styles.secondaryText}>
-          {walletProvider === "embedded" ? "Sign in Web3Auth Wallet" : "Sign in Phantom"}
-        </Text>
+        <Text style={styles.secondaryText}>{isSigning ? "Signing..." : "Sign in in-app wallet"}</Text>
       </Pressable>
       {submitError ? <Text style={styles.errorText}>{submitError}</Text> : null}
 
@@ -285,9 +282,7 @@ export function PayoutClaimScreen() {
   const nav = useNavigation<NavigationProp<ParamListBase>>();
   const queryClient = useQueryClient();
   const wallet = useAppStore((s) => s.wallet);
-  const walletProvider = useAppStore((s) => s.walletProvider);
   const { committee, routeCommitteeId } = useSelectedCommittee();
-  const { signAndSendDevnetProofTx: signWithPhantom } = usePhantomWallet();
   const { signAndSendDevnetProofTx: signWithWeb3Auth } = useWeb3AuthWallet();
   const grossLamports =
     (committee?.contributionLamports ?? 0) * Math.max(1, committee?.memberCount ?? 1);
@@ -298,6 +293,7 @@ export function PayoutClaimScreen() {
   const netUsdc = netLamports / 1_000_000;
   const [txSignature, setTxSignature] = useState("");
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [isSigning, setIsSigning] = useState(false);
   const isSignatureValid = useMemo(() => txSignature.trim().length >= 30, [txSignature]);
 
   const claimMutation = useMutation({
@@ -351,29 +347,28 @@ export function PayoutClaimScreen() {
         autoCorrect={false}
       />
       <Pressable
-        style={styles.secondaryBtn}
+        style={[styles.secondaryBtn, isSigning && { opacity: 0.7 }]}
+        disabled={isSigning}
         onPress={async () => {
           if (!wallet) {
             setSubmitError("Connect wallet first");
             return;
           }
           try {
+            setIsSigning(true);
             setSubmitError(null);
-            const signature =
-              walletProvider === "embedded"
-                ? await signWithWeb3Auth(wallet)
-                : await signWithPhantom(wallet);
+            const signature = await signWithWeb3Auth(wallet);
             setTxSignature(signature);
           } catch (error) {
             setSubmitError(
-              error instanceof Error ? error.message : "Failed to capture Phantom signature"
+              error instanceof Error ? error.message : "Failed to capture in-app wallet signature"
             );
+          } finally {
+            setIsSigning(false);
           }
         }}
       >
-        <Text style={styles.secondaryText}>
-          {walletProvider === "embedded" ? "Sign in Web3Auth Wallet" : "Sign in Phantom"}
-        </Text>
+        <Text style={styles.secondaryText}>{isSigning ? "Signing..." : "Sign in in-app wallet"}</Text>
       </Pressable>
       {submitError ? <Text style={styles.errorText}>{submitError}</Text> : null}
       <Pressable

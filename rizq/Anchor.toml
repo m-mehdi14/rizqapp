@@ -19,7 +19,7 @@ payout = "AXBFPJPcxx1n2uZM9K1chRZX7dUDPr9mDRabAREKs8Yy"
 url = "https://api.apr.dev"
 
 [provider]
-cluster = "Localnet"
+cluster = "Devnet"
 # CLI signer: put the keypair JSON whose pubkey is below at `wallet` (cannot sign from pubkey alone).
 # Expected deployer pubkey: 5xsjSLua1idjkW6qfaSLbRfMkUBtFDHVsuce6pi25tt
 wallet = "~/.config/solana/id.json"

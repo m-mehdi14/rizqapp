@@ -16,7 +16,6 @@ import { UrgentActionCard } from "./components/UrgentActionCard";
 import type { BalanceData, CommitteeItem, UrgentAction } from "./types";
 import { useAppStore } from "../../store/useAppStore";
 import { fetchPkrRate } from "../../api/rizqApi";
-import { usePhantomWallet } from "../../hooks/usePhantomWallet";
 import { useWeb3AuthWallet } from "../../hooks/useWeb3AuthWallet";
 
 const FLOATING_TAB_BAR_CLEARANCE = 108;
@@ -24,15 +23,12 @@ const FLOATING_TAB_BAR_CLEARANCE = 108;
 export function HomeScreen() {
   const navigation = useNavigation<NavigationProp<ParamListBase>>();
   const insets = useSafeAreaInsets();
-  const { connect } = usePhantomWallet();
-  const { connectWeb3AuthWallet, isConfigured: web3AuthConfigured } = useWeb3AuthWallet();
+  const { connectWeb3AuthWallet } = useWeb3AuthWallet();
   const wallet = useAppStore((s) => s.wallet);
-  const walletProvider = useAppStore((s) => s.walletProvider);
   const userId = useAppStore((s) => s.userId);
   const displayName = useAppStore((s) => s.displayName);
   const usdcBalance = useAppStore((s) => s.usdcBalance);
   const liveCommittees = useAppStore((s) => s.committees);
-  const [isConnectingWallet, setIsConnectingWallet] = useState(false);
   const [isConnectingEmbedded, setIsConnectingEmbedded] = useState(false);
   const [walletError, setWalletError] = useState<string | null>(null);
   const activeCommitteeId = liveCommittees[0]?.id;
@@ -51,7 +47,6 @@ export function HomeScreen() {
     liveCommittees.length > 0
       ? "Keep contributions on time to protect payout order and improve your Rizq score."
       : "Join or create a committee to start getting AI coaching insights.";
-  const unreadCount = 3;
   const pkrRateQuery = useQuery({
     queryKey: ["pkr-rate"],
     queryFn: fetchPkrRate,
@@ -72,6 +67,68 @@ export function HomeScreen() {
     () => committees.some((item) => item.nextPaymentDueLabel.toLowerCase().includes("tomorrow")),
     [committees]
   );
+
+  const upcomingCycles = useMemo(() => {
+    return [...liveCommittees]
+      .sort((a, b) => (a.daysLeft ?? 0) - (b.daysLeft ?? 0))
+      .slice(0, 4)
+      .map((committee) => {
+        const daysLeft = Math.max(0, committee.daysLeft ?? 0);
+        const tone = daysLeft <= 1 ? "danger" : daysLeft <= 3 ? "warning" : "info";
+        const nextDue = committee.nextCycleDate
+          ? new Date(committee.nextCycleDate).toLocaleDateString()
+          : "TBD";
+        const cycle = committee.currentCycle ?? 1;
+        return {
+          id: committee.id,
+          title: committee.name,
+          subtitle: `Cycle ${cycle} due ${nextDue}`,
+          meta: daysLeft === 0 ? "Due today" : `${daysLeft} days left`,
+          tone,
+        };
+      });
+  }, [liveCommittees]);
+
+  const liveAlerts = useMemo(() => {
+    const alerts: Array<{ id: string; text: string; tone: "danger" | "warning" | "info" }> = [];
+    liveCommittees.forEach((committee) => {
+      const daysLeft = Math.max(0, committee.daysLeft ?? 0);
+      const status = (committee.status ?? "").toLowerCase();
+      if (status.includes("paused")) {
+        alerts.push({
+          id: `${committee.id}-paused`,
+          text: `${committee.name} is paused. Manager action is required.`,
+          tone: "warning",
+        });
+        return;
+      }
+      if (daysLeft === 0) {
+        alerts.push({
+          id: `${committee.id}-due-today`,
+          text: `${committee.name} contribution is due today.`,
+          tone: "danger",
+        });
+        return;
+      }
+      if (daysLeft <= 2) {
+        alerts.push({
+          id: `${committee.id}-due-soon`,
+          text: `${committee.name} due in ${daysLeft} day${daysLeft === 1 ? "" : "s"}.`,
+          tone: "warning",
+        });
+      }
+    });
+    if (alerts.length === 0 && liveCommittees.length > 0) {
+      alerts.push({
+        id: "all-good",
+        text: "All committees are on track this week.",
+        tone: "info",
+      });
+    }
+    return alerts.slice(0, 5);
+  }, [liveCommittees]);
+
+  const unreadCount = liveAlerts.filter((alert) => alert.tone !== "info").length;
 
   const balance: BalanceData = useMemo(() => {
     const inCommitteesUsdc = liveCommittees.reduce(
@@ -96,19 +153,6 @@ export function HomeScreen() {
     };
   }, [liveCommittees, pkrRateQuery.data, usdcBalance]);
 
-  const handleConnectWallet = useCallback(async () => {
-    if (isConnectingWallet) return;
-    setWalletError(null);
-    setIsConnectingWallet(true);
-    try {
-      await connect();
-    } catch (error) {
-      setWalletError(error instanceof Error ? error.message : "Unable to open Phantom right now. Please try again.");
-    } finally {
-      setIsConnectingWallet(false);
-    }
-  }, [connect, isConnectingWallet]);
-
   const handleConnectEmbeddedWallet = useCallback(async () => {
     if (isConnectingEmbedded) return;
     setWalletError(null);
@@ -116,10 +160,10 @@ export function HomeScreen() {
     try {
       const walletAddress = await connectWeb3AuthWallet();
       if (!walletAddress) {
-        setWalletError("Unable to connect Web3Auth wallet right now.");
+        setWalletError("Unable to connect in-app wallet right now.");
       }
     } catch (error) {
-      setWalletError(error instanceof Error ? error.message : "Unable to connect Web3Auth wallet. Please try again.");
+      setWalletError(error instanceof Error ? error.message : "Unable to connect in-app wallet. Please try again.");
     } finally {
       setIsConnectingEmbedded(false);
     }
@@ -138,49 +182,29 @@ export function HomeScreen() {
           ]}
           showsVerticalScrollIndicator={false}
         >
-          <Header unreadCount={unreadCount} onPressNotifications={() => undefined} />
+          <Header unreadCount={unreadCount} onPressNotifications={() => navigation.navigate("Notifications")} />
           <View style={styles.connectWallet}>
             {!wallet ? (
               <>
-                <Text style={styles.connectWalletTitle}>Connect Phantom Wallet</Text>
+                <Text style={styles.connectWalletTitle}>Connect In-App Wallet</Text>
                 <Text style={styles.connectWalletSub}>
-                  Connect to unlock committee actions and real on-chain activity.
+                  Connect with Rizq in-app wallet to unlock committee actions and real on-chain activity.
                 </Text>
                 <Pressable
                   style={({ pressed }) => [
                     styles.connectWalletButton,
                     pressed ? styles.connectWalletButtonPressed : null,
-                    isConnectingWallet ? styles.connectWalletButtonDisabled : null,
-                  ]}
-                  disabled={isConnectingWallet}
-                  onPress={handleConnectWallet}
-                >
-                  {isConnectingWallet ? (
-                    <ActivityIndicator size="small" color={colors.textInverse} />
-                  ) : (
-                    <Text style={styles.connectWalletButtonText}>Connect Wallet</Text>
-                  )}
-                </Pressable>
-                <Pressable
-                  style={({ pressed }) => [
-                    styles.connectWalletSecondaryButton,
-                    pressed ? styles.connectWalletButtonPressed : null,
                     isConnectingEmbedded ? styles.connectWalletButtonDisabled : null,
                   ]}
-                  disabled={isConnectingEmbedded || !web3AuthConfigured}
+                  disabled={isConnectingEmbedded}
                   onPress={handleConnectEmbeddedWallet}
                 >
                   {isConnectingEmbedded ? (
-                    <ActivityIndicator size="small" color={colors.textPrimary} />
+                    <ActivityIndicator size="small" color={colors.textInverse} />
                   ) : (
-                    <Text style={styles.connectWalletSecondaryButtonText}>Use In-App Wallet (Web3Auth)</Text>
+                    <Text style={styles.connectWalletButtonText}>Connect In-App Wallet</Text>
                   )}
                 </Pressable>
-                {!web3AuthConfigured ? (
-                  <Text style={styles.walletHintText}>
-                    Add `RIZQ_WEB3AUTH_CLIENT_ID` and `RIZQ_WEB3AUTH_REDIRECT_URL` in `rizq-app/.env`.
-                  </Text>
-                ) : null}
                 {walletError ? <Text style={styles.walletErrorText}>{walletError}</Text> : null}
               </>
             ) : (
@@ -193,7 +217,7 @@ export function HomeScreen() {
                   {wallet.slice(0, 4)}...{wallet.slice(-4)}
                 </Text>
                 <Text style={styles.connectWalletProvider}>
-                  Provider: {walletProvider === "embedded" ? "In-App Wallet (Web3Auth)" : "Phantom"}
+                  Provider: In-App Wallet
                 </Text>
                 <Text style={styles.identityText}>
                   {displayName ? `${displayName} · ` : ""}
@@ -231,6 +255,64 @@ export function HomeScreen() {
               navigation.navigate("CommitteesTab", { screen: "JoinCommittee" })
             }
           />
+
+          <SectionHeader title="Live Alerts" />
+          <View style={styles.liveAlertList}>
+            {liveAlerts.map((alert) => (
+              <View
+                key={alert.id}
+                style={[
+                  styles.liveAlertItem,
+                  alert.tone === "danger"
+                    ? styles.liveAlertDanger
+                    : alert.tone === "warning"
+                      ? styles.liveAlertWarning
+                      : styles.liveAlertInfo,
+                ]}
+              >
+                <Text style={styles.liveAlertText}>{alert.text}</Text>
+              </View>
+            ))}
+          </View>
+
+          <SectionHeader title="Next Due" />
+          {upcomingCycles.length > 0 ? (
+            <View style={styles.upcomingList}>
+              {upcomingCycles.map((item) => (
+                <Pressable
+                  key={item.id}
+                  style={styles.upcomingItem}
+                  onPress={() =>
+                    navigation.navigate("CommitteesTab", {
+                      screen: "MemberDashboard",
+                      params: { committeeId: item.id },
+                    })
+                  }
+                >
+                  <View>
+                    <Text style={styles.upcomingTitle}>{item.title}</Text>
+                    <Text style={styles.upcomingSubtitle}>{item.subtitle}</Text>
+                  </View>
+                  <Text
+                    style={[
+                      styles.upcomingMeta,
+                      item.tone === "danger"
+                        ? styles.upcomingMetaDanger
+                        : item.tone === "warning"
+                          ? styles.upcomingMetaWarning
+                          : styles.upcomingMetaInfo,
+                    ]}
+                  >
+                    {item.meta}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          ) : (
+            <View style={styles.liveAlertItem}>
+              <Text style={styles.liveAlertText}>No active committees yet. Create one to start live tracking.</Text>
+            </View>
+          )}
 
           {urgentAction ? (
             <UrgentActionCard
@@ -304,19 +386,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  connectWalletSecondaryButton: {
-    alignSelf: "flex-start",
-    borderRadius: 10,
-    minWidth: 150,
-    minHeight: 40,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.25)",
-    backgroundColor: "rgba(255,255,255,0.08)",
-  },
   connectWalletButtonPressed: {
     opacity: 0.85,
   },
@@ -325,11 +394,6 @@ const styles = StyleSheet.create({
   },
   connectWalletButtonText: {
     color: colors.textInverse,
-    fontSize: typography.bodySmall,
-    fontWeight: "700",
-  },
-  connectWalletSecondaryButtonText: {
-    color: colors.textPrimary,
     fontSize: typography.bodySmall,
     fontWeight: "700",
   },
@@ -363,5 +427,70 @@ const styles = StyleSheet.create({
   identityText: {
     color: colors.textSecondary,
     fontSize: typography.caption,
+  },
+  liveAlertList: {
+    gap: 8,
+  },
+  liveAlertItem: {
+    borderRadius: radii.card,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.12)",
+    backgroundColor: "rgba(255,255,255,0.04)",
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  liveAlertDanger: {
+    borderColor: "rgba(255,82,82,0.45)",
+    backgroundColor: "rgba(255,82,82,0.12)",
+  },
+  liveAlertWarning: {
+    borderColor: "rgba(255,179,0,0.45)",
+    backgroundColor: "rgba(255,179,0,0.12)",
+  },
+  liveAlertInfo: {
+    borderColor: "rgba(92,173,255,0.45)",
+    backgroundColor: "rgba(92,173,255,0.12)",
+  },
+  liveAlertText: {
+    color: colors.textPrimary,
+    fontSize: typography.caption,
+    lineHeight: 18,
+  },
+  upcomingList: {
+    gap: 8,
+  },
+  upcomingItem: {
+    borderRadius: radii.card,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.12)",
+    backgroundColor: "rgba(255,255,255,0.04)",
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+  },
+  upcomingTitle: {
+    color: colors.textPrimary,
+    fontSize: typography.bodySmall,
+    fontWeight: "700",
+  },
+  upcomingSubtitle: {
+    color: colors.textSecondary,
+    fontSize: typography.caption,
+  },
+  upcomingMeta: {
+    fontSize: typography.caption,
+    fontWeight: "700",
+  },
+  upcomingMetaDanger: {
+    color: colors.danger,
+  },
+  upcomingMetaWarning: {
+    color: colors.warning,
+  },
+  upcomingMetaInfo: {
+    color: colors.info,
   },
 });

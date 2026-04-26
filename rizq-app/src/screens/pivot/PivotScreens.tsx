@@ -35,7 +35,6 @@ import { ScreenShell } from "../../components/ScreenShell";
 import { t } from "../../i18n/strings";
 import { useAppStore } from "../../store/useAppStore";
 import { colors, radii, spacing, typography } from "../../theme/tokens";
-import { usePhantomWallet } from "../../hooks/usePhantomWallet";
 import { useWeb3AuthWallet } from "../../hooks/useWeb3AuthWallet";
 import {
   authLogin,
@@ -608,16 +607,12 @@ export function Onboarding09NomineeScreen() {
 
 export function Onboarding10WalletSetupScreen() {
   const nav = useAppNav();
-  const { connect } = usePhantomWallet();
-  const { connectWeb3AuthWallet, isConfigured: web3AuthConfigured } = useWeb3AuthWallet();
+  const { connectWeb3AuthWallet } = useWeb3AuthWallet();
   const wallet = useAppStore((s) => s.wallet);
-  const walletProvider = useAppStore((s) => s.walletProvider);
-  const [connecting, setConnecting] = useState(false);
   const [connectingEmbedded, setConnectingEmbedded] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   useEffect(() => {
     if (wallet) {
-      setConnecting(false);
       setErrorMessage(null);
     }
   }, [wallet]);
@@ -625,60 +620,38 @@ export function Onboarding10WalletSetupScreen() {
     <Page
       code="10"
       title="Wallet setup"
-      subtitle="Use Phantom deeplink or create an embedded wallet."
+      subtitle="Connect your in-app wallet to start saving and paying committee cycles."
     >
       <ProgressDots total={12} current={9} />
       <SectionCard
         icon={<Wallet color={colors.brandPurple} size={18} />}
-        title="Connect Phantom wallet"
-        body="Best for users who already use Phantom and prefer external signing."
+        title="Connect in-app wallet"
+        body="One-tap login and Solana signing directly inside Rizq."
       />
       <PrimaryButton
-        label={wallet ? "Wallet connected" : connecting ? "Waiting for Phantom..." : "Connect Phantom now"}
-        onPress={() => {
-          if (wallet || connecting) return;
-          setConnecting(true);
-          setErrorMessage(null);
-          connect()
-            .then((connectedWallet) => {
-              if (!connectedWallet) {
-                setErrorMessage(
-                  "No callback received from Phantom. Open Phantom and approve, then return to Rizq."
-                );
-              }
-            })
-            .finally(() => setTimeout(() => setConnecting(false), 1500));
-        }}
-      />
-      {errorMessage ? <Text style={styles.authError}>{errorMessage}</Text> : null}
-      <SectionCard
-        icon={<ShieldCheck color={colors.info} size={18} />}
-        title="Connect Web3Auth in-app wallet"
-        body="Best no-switch UX. Login and sign directly inside Rizq."
-      />
-      <PrimaryButton
-        label={connectingEmbedded ? "Connecting Web3Auth..." : "Use in-app wallet (Web3Auth)"}
+        label={connectingEmbedded ? "Connecting in-app wallet..." : "Use in-app wallet"}
         onPress={() => {
           if (connectingEmbedded) return;
-          if (!web3AuthConfigured) {
-            setErrorMessage("Web3Auth is not configured. Set RIZQ_WEB3AUTH_CLIENT_ID and RIZQ_WEB3AUTH_REDIRECT_URL.");
-            return;
-          }
           setConnectingEmbedded(true);
           setErrorMessage(null);
           connectWeb3AuthWallet()
             .then(() => undefined)
             .catch((error) =>
               setErrorMessage(
-                error instanceof Error ? error.message : "Unable to connect Web3Auth wallet right now."
+                error instanceof Error ? error.message : "Unable to connect in-app wallet right now."
               )
             )
             .finally(() => setConnectingEmbedded(false));
         }}
       />
+      {errorMessage ? <Text style={styles.authError}>{errorMessage}</Text> : null}
+      <SecondaryButton
+        label="Skip wallet for now"
+        onPress={() => nav.navigate("Onboarding11")}
+      />
       {wallet ? (
         <SecondaryButton
-          label={`Continue (${walletProvider === "embedded" ? "In-App Wallet" : "Phantom"})`}
+          label="Continue (In-App Wallet)"
           onPress={() => nav.navigate("Onboarding11")}
         />
       ) : null}

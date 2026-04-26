@@ -8,7 +8,6 @@ import { GlassCard } from "../../components/GlassCard";
 import { ScreenShell } from "../../components/ScreenShell";
 import { updateSessionProfile } from "../../api/rizqApi";
 import { persistAuthToken } from "../../hooks/useAuthSessionBootstrap";
-import { usePhantomWallet } from "../../hooks/usePhantomWallet";
 import { useWeb3AuthWallet } from "../../hooks/useWeb3AuthWallet";
 import { useAppStore } from "../../store/useAppStore";
 import { colors, radii, spacing, typography } from "../../theme/tokens";
@@ -84,9 +83,7 @@ export function SettingsMainScreen() {
   const setProfileIdentity = useAppStore((s) => s.setProfileIdentity);
   const setLanguagePreference = useAppStore((s) => s.setLanguagePreference);
   const wallet = useAppStore((s) => s.wallet);
-  const walletProvider = useAppStore((s) => s.walletProvider);
   const setWalletConnection = useAppStore((s) => s.setWalletConnection);
-  const { connect } = usePhantomWallet();
   const { connectWeb3AuthWallet, logoutWeb3AuthWallet } = useWeb3AuthWallet();
   const [nameInput, setNameInput] = useState(displayName);
   const [usernameInput, setUsernameInput] = useState(username);
@@ -171,12 +168,15 @@ export function SettingsMainScreen() {
       <Pressable style={styles.primaryBtn} onPress={() => nav.navigate("WalletMain")}>
         <Text style={styles.primaryText}>Open Wallet</Text>
       </Pressable>
+      <Pressable style={styles.secondaryBtn} onPress={() => nav.navigate("SettingsHub")}>
+        <Text style={styles.secondaryText}>Open full settings screens</Text>
+      </Pressable>
 
       <GlassCard style={styles.card}>
         <Text style={styles.sectionTitle}>Wallet Provider</Text>
         <Text style={styles.help}>
           {wallet
-            ? `Connected: ${walletProvider === "embedded" ? "Web3Auth In-App Wallet" : "Phantom"} (${wallet.slice(0, 4)}...${wallet.slice(-4)})`
+            ? `Connected: In-App Wallet (${wallet.slice(0, 4)}...${wallet.slice(-4)})`
             : "No wallet connected"}
         </Text>
         <View style={styles.toggleRow}>
@@ -185,35 +185,20 @@ export function SettingsMainScreen() {
             onPress={async () => {
               try {
                 setSettingsError(null);
-                await connect();
-              } catch (error) {
-                setSettingsError(error instanceof Error ? error.message : "Unable to connect Phantom wallet.");
-              }
-            }}
-          >
-            <Text style={styles.secondaryText}>Use Phantom</Text>
-          </Pressable>
-          <Pressable
-            style={styles.secondaryBtn}
-            onPress={async () => {
-              try {
-                setSettingsError(null);
                 await connectWeb3AuthWallet();
-              } catch {
-                setSettingsError("Unable to connect Web3Auth wallet.");
+              } catch (error) {
+                setSettingsError(error instanceof Error ? error.message : "Unable to connect in-app wallet.");
               }
             }}
           >
-            <Text style={styles.secondaryText}>Use Web3Auth</Text>
+            <Text style={styles.secondaryText}>Use in-app wallet</Text>
           </Pressable>
         </View>
         <Pressable
           style={styles.dangerBtn}
           onPress={async () => {
             setSettingsError(null);
-            if (walletProvider === "embedded") {
-              await logoutWeb3AuthWallet().catch(() => undefined);
-            }
+            await logoutWeb3AuthWallet().catch(() => undefined);
             setWalletConnection(null, null);
           }}
         >
