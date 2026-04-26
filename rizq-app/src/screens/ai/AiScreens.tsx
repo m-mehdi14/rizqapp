@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import type { NavigationProp, ParamListBase } from "@react-navigation/native";
@@ -88,18 +88,74 @@ export function AiMainScreen() {
 
 export function AiChatScreen() {
   const [draft, setDraft] = useState("");
+  const messages = useMemo(
+    () => [
+      {
+        id: "m1",
+        role: "user" as const,
+        body: "When is my next payment due?",
+        time: "2:14 PM",
+      },
+      {
+        id: "m2",
+        role: "ai" as const,
+        body: "Your next committee payment is due on 9 May. Aap 1 din pehle pay kar dein to late risk avoid hoga.",
+        time: "2:14 PM",
+      },
+      {
+        id: "m3",
+        role: "user" as const,
+        body: "Kitna amount rakhna hai wallet mein?",
+        time: "2:15 PM",
+      },
+      {
+        id: "m4",
+        role: "ai" as const,
+        body: "Current cycle ke liye 30 USDC enough hai. Safe side pe 32 USDC rakhein for fees fluctuation.",
+        time: "2:15 PM",
+      },
+    ],
+    []
+  );
   return (
     <Layout
       title="AI Chat"
       subtitle="Ask in English, Urdu, or mixed. Response uses your live committee context."
     >
-      <GlassCard style={styles.chatBubbleUser}>
-        <Text style={styles.chatUser}>When is my next payment due?</Text>
-      </GlassCard>
-      <GlassCard style={styles.chatBubbleAi}>
-        <Text style={styles.chatAi}>
-          Your next payment is due on 9 May. Aap 1 din pehle pay kar dein to late risk avoid hoga.
-        </Text>
+      <GlassCard style={styles.chatCard}>
+        <View style={styles.chatHeader}>
+          <Text style={styles.chatHeaderTitle}>Rizq Assistant</Text>
+          <Text style={styles.chatHeaderMeta}>Live committee context</Text>
+        </View>
+
+        <View style={styles.chatList}>
+          {messages.map((message) => (
+            <View
+              key={message.id}
+              style={[
+                styles.messageWrap,
+                message.role === "user" ? styles.messageWrapUser : styles.messageWrapAi,
+              ]}
+            >
+              <View
+                style={[
+                  styles.messageBubble,
+                  message.role === "user" ? styles.messageBubbleUser : styles.messageBubbleAi,
+                ]}
+              >
+                <Text style={styles.messageText}>{message.body}</Text>
+              </View>
+              <Text
+                style={[
+                  styles.messageTime,
+                  message.role === "user" ? styles.messageTimeUser : styles.messageTimeAi,
+                ]}
+              >
+                {message.time}
+              </Text>
+            </View>
+          ))}
+        </View>
       </GlassCard>
 
       <View style={styles.inputRow}>
@@ -109,6 +165,7 @@ export function AiChatScreen() {
           placeholder="Ask Rizq AI..."
           placeholderTextColor={colors.textMuted}
           style={styles.chatInput}
+          multiline
         />
         <Pressable style={styles.sendBtn} onPress={() => setDraft("")}>
           <ChatCircleText color={colors.textInverse} size={20} />
@@ -219,32 +276,58 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   secondaryBtnText: { color: colors.textPrimary, fontSize: typography.bodySmall, fontWeight: "600" },
-  chatBubbleUser: {
+  chatCard: {
     padding: 12,
-    alignSelf: "flex-end",
-    backgroundColor: "rgba(167,139,250,0.2)",
+    gap: 10,
     borderWidth: 1,
-    borderColor: "rgba(167,139,250,0.42)",
+    borderColor: "rgba(167,139,250,0.22)",
+    backgroundColor: "rgba(8,15,31,0.64)",
   },
-  chatBubbleAi: {
-    padding: 12,
-    alignSelf: "flex-start",
+  chatHeader: {
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(255,255,255,0.08)",
+    paddingBottom: 8,
+    gap: 2,
+  },
+  chatHeaderTitle: { color: colors.textPrimary, fontSize: typography.body, fontWeight: "800" },
+  chatHeaderMeta: { color: colors.textSecondary, fontSize: typography.caption },
+  chatList: { gap: 8 },
+  messageWrap: { gap: 3, maxWidth: "88%" },
+  messageWrapUser: { alignSelf: "flex-end", alignItems: "flex-end" },
+  messageWrapAi: { alignSelf: "flex-start", alignItems: "flex-start" },
+  messageBubble: {
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 14,
+  },
+  messageBubbleUser: {
+    backgroundColor: "rgba(167,139,250,0.22)",
+    borderWidth: 1,
+    borderColor: "rgba(167,139,250,0.46)",
+    borderBottomRightRadius: 4,
+  },
+  messageBubbleAi: {
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.14)",
-    backgroundColor: "rgba(255,255,255,0.05)",
+    backgroundColor: "rgba(255,255,255,0.06)",
+    borderBottomLeftRadius: 4,
   },
-  chatUser: { color: colors.textPrimary, fontSize: typography.bodySmall },
-  chatAi: { color: colors.textPrimary, fontSize: typography.bodySmall, lineHeight: 21 },
+  messageText: { color: colors.textPrimary, fontSize: typography.bodySmall, lineHeight: 21 },
+  messageTime: { color: colors.textMuted, fontSize: 11 },
+  messageTimeUser: { textAlign: "right" },
+  messageTimeAi: { textAlign: "left" },
   inputRow: { flexDirection: "row", gap: 8, marginTop: 4 },
   chatInput: {
     flex: 1,
-    minHeight: 46,
+    minHeight: 52,
+    maxHeight: 120,
     borderRadius: radii.input,
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.14)",
     backgroundColor: colors.bgElevated,
     color: colors.textPrimary,
     paddingHorizontal: 12,
+    paddingVertical: 10,
   },
   sendBtn: {
     width: 46,
