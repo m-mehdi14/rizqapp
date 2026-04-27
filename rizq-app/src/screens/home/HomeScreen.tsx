@@ -15,7 +15,7 @@ import { QuickActions } from "./components/QuickActions";
 import { UrgentActionCard } from "./components/UrgentActionCard";
 import type { BalanceData, CommitteeItem, UrgentAction } from "./types";
 import { useAppStore } from "../../store/useAppStore";
-import { fetchPkrRate } from "../../api/rizqApi";
+import { fetchPkrRate, fetchSolUsdcRate } from "../../api/rizqApi";
 import { useWeb3AuthWallet } from "../../hooks/useWeb3AuthWallet";
 
 const FLOATING_TAB_BAR_CLEARANCE = 108;
@@ -27,7 +27,7 @@ export function HomeScreen() {
   const wallet = useAppStore((s) => s.wallet);
   const userId = useAppStore((s) => s.userId);
   const displayName = useAppStore((s) => s.displayName);
-  const usdcBalance = useAppStore((s) => s.usdcBalance);
+  const solBalanceLamports = useAppStore((s) => s.solBalanceLamports);
   const liveCommittees = useAppStore((s) => s.committees);
   const [isConnectingEmbedded, setIsConnectingEmbedded] = useState(false);
   const [walletError, setWalletError] = useState<string | null>(null);
@@ -50,6 +50,11 @@ export function HomeScreen() {
   const pkrRateQuery = useQuery({
     queryKey: ["pkr-rate"],
     queryFn: fetchPkrRate,
+    refetchInterval: 60_000,
+  });
+  const solRateQuery = useQuery({
+    queryKey: ["sol-usd-rate"],
+    queryFn: fetchSolUsdcRate,
     refetchInterval: 60_000,
   });
 
@@ -131,27 +136,30 @@ export function HomeScreen() {
   const unreadCount = liveAlerts.filter((alert) => alert.tone !== "info").length;
 
   const balance: BalanceData = useMemo(() => {
-    const inCommitteesUsdc = liveCommittees.reduce(
-      (sum, committee) => sum + Math.max(0, committee.savedLamports) / 1_000_000,
+    const inCommitteesSol = liveCommittees.reduce(
+      (sum, committee) => sum + Math.max(0, committee.savedLamports) / 1_000_000_000,
       0
     );
-    const totalUsdc = Math.max(0, usdcBalance / 1_000_000);
-    const pendingPayoutsUsdc = liveCommittees
+    const totalSol = Math.max(0, solBalanceLamports / 1_000_000_000);
+    const pendingPayoutsSol = liveCommittees
       .filter((committee) => (committee.status ?? "").toLowerCase().includes("payout"))
       .reduce(
-        (sum, committee) => sum + Math.max(0, committee.contributionLamports ?? 0) / 1_000_000,
+        (sum, committee) => sum + Math.max(0, committee.contributionLamports ?? 0) / 1_000_000_000,
         0
       );
-    const availableUsdc = Math.max(0, totalUsdc - inCommitteesUsdc);
+    const availableSol = Math.max(0, totalSol - inCommitteesSol);
+    const solUsdcRate = solRateQuery.data ?? 0;
+    const totalUsdcEquivalent = totalSol * solUsdcRate;
     const pkrRate = pkrRateQuery.data ?? 280;
     return {
-      totalUsdc,
-      availableUsdc,
-      inCommitteesUsdc,
-      pendingPayoutsUsdc,
-      pkrEquivalent: totalUsdc * pkrRate,
+      totalSol,
+      totalUsdcEquivalent,
+      availableSol,
+      inCommitteesSol,
+      pendingPayoutsSol,
+      pkrEquivalent: totalUsdcEquivalent * pkrRate,
     };
-  }, [liveCommittees, pkrRateQuery.data, usdcBalance]);
+  }, [liveCommittees, pkrRateQuery.data, solBalanceLamports, solRateQuery.data]);
 
   const handleConnectEmbeddedWallet = useCallback(async () => {
     if (isConnectingEmbedded) return;
@@ -212,7 +220,7 @@ export function HomeScreen() {
                 <View style={styles.walletConnectedBadge}>
                   <Text style={styles.walletConnectedBadgeText}>Connected</Text>
                 </View>
-                <Text style={styles.connectWalletTitle}>Phantom Wallet Linked</Text>
+                <Text style={styles.connectWalletTitle}>In-App Wallet Linked</Text>
                 <Text style={styles.connectWalletSub}>
                   {wallet.slice(0, 4)}...{wallet.slice(-4)}
                 </Text>

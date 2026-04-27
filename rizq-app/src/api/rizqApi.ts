@@ -768,6 +768,26 @@ export async function fetchWalletUsdcBalance(walletAddress: string): Promise<num
   return uiAmount;
 }
 
+export async function fetchWalletSolBalance(walletAddress: string): Promise<number> {
+  const connection = new Connection(SOLANA_RPC_URL, "confirmed");
+  const owner = new PublicKey(walletAddress);
+  const lamports = await connection.getBalance(owner, "confirmed");
+  return lamports / 1_000_000_000;
+}
+
+export async function fetchSolUsdcRate(): Promise<number> {
+  const res = await fetch(
+    "https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd"
+  );
+  if (!res.ok) throw new Error(`HTTP ${res.status} for SOL rate`);
+  const payload = (await res.json()) as { solana?: { usd?: number } };
+  const rate = Number(payload?.solana?.usd ?? 0);
+  if (!Number.isFinite(rate) || rate <= 0) {
+    throw new Error("Invalid SOL price payload");
+  }
+  return rate;
+}
+
 export async function fetchWalletTransactions(walletAddress: string): Promise<WalletTransactionRow[]> {
   return await http<WalletTransactionRow[]>(
     `/api/committees/wallet/${encodeURIComponent(walletAddress)}/transactions`

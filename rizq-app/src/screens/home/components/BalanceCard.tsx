@@ -13,6 +13,10 @@ function formatUsd(value: number): string {
   return `$${value.toFixed(2)}`;
 }
 
+function formatSol(value: number): string {
+  return `${value.toFixed(4)} SOL`;
+}
+
 function formatPkr(value: number): string {
   return `PKR ${Math.round(value).toLocaleString()}`;
 }
@@ -26,22 +30,24 @@ export function BalanceCard({ balance, onPress }: Props) {
     >
       <GlassCard style={styles.card}>
         <Text style={styles.label}>Total Balance</Text>
-        <Text style={styles.total}>{formatUsd(balance.totalUsdc)} USDC</Text>
-        <Text style={styles.pkr}>≈ {formatPkr(balance.pkrEquivalent)}</Text>
+        <Text style={styles.total}>{formatSol(balance.totalSol)}</Text>
+        <Text style={styles.pkr}>
+          ≈ {formatUsd(balance.totalUsdcEquivalent)} USDC • {formatPkr(balance.pkrEquivalent)}
+        </Text>
         {/* TODO: Use React Query + CoinGecko polling every 60s here. */}
 
         <View style={styles.figureRow}>
           <View style={styles.figureItem}>
             <Text style={styles.figureLabel}>Available</Text>
-            <Text style={styles.figureValue}>{formatUsd(balance.availableUsdc)}</Text>
+            <Text style={styles.figureValue}>{formatSol(balance.availableSol)}</Text>
           </View>
           <View style={styles.figureItem}>
             <Text style={styles.figureLabel}>In committees</Text>
-            <Text style={styles.figureValue}>{formatUsd(balance.inCommitteesUsdc)}</Text>
+            <Text style={styles.figureValue}>{formatSol(balance.inCommitteesSol)}</Text>
           </View>
           <View style={styles.figureItem}>
             <Text style={styles.figureLabel}>Pending payouts</Text>
-            <Text style={styles.figureValue}>{formatUsd(balance.pendingPayoutsUsdc)}</Text>
+            <Text style={styles.figureValue}>{formatSol(balance.pendingPayoutsSol)}</Text>
           </View>
         </View>
       </GlassCard>

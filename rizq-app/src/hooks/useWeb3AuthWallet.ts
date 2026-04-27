@@ -102,7 +102,15 @@ export function useWeb3AuthWallet() {
         return address;
       } catch (error) {
         lastError = error instanceof Error ? error.message : "unknown";
+        // Force client re-init on next redirect candidate / retry.
+        web3auth = null;
+        web3authRedirectUrl = null;
       }
+    }
+    if (lastError.toLowerCase().includes("digest")) {
+      throw new Error(
+        "Web3Auth dashboard setup is incomplete. Set Product and Platform=React Native, and add redirect URIs com.rizqapp://auth and rizq://auth."
+      );
     }
     throw new Error(
       `Web3Auth login failed (${lastError}). Add these redirect URLs in Web3Auth dashboard: com.rizqapp://auth and rizq://auth`

@@ -38,6 +38,7 @@ type AppState = {
   phoneVerificationSkipped: boolean;
   languagePreference: "english" | "urdu" | "both";
   usdcBalance: number;
+  solBalanceLamports: number;
   committees: Committee[];
   activeGoals: Goal[];
   setUserId: (id: string | null) => void;
@@ -58,6 +59,7 @@ type AppState = {
   setPhoneVerificationSkipped: (v: boolean) => void;
   setLanguagePreference: (v: AppState["languagePreference"]) => void;
   setBalance: (n: number) => void;
+  setSolBalanceLamports: (n: number) => void;
   setCommittees: (committees: Committee[]) => void;
   addCommittee: (c: Committee) => void;
   updateCommittee: (id: string, patch: Partial<Committee>) => void;
@@ -81,6 +83,7 @@ export const useAppStore = create<AppState>((set) => ({
   phoneVerificationSkipped: false,
   languagePreference: "both",
   usdcBalance: 0,
+  solBalanceLamports: 0,
   committees: [],
   activeGoals: [],
   setUserId: (userId) => set({ userId }),
@@ -108,6 +111,7 @@ export const useAppStore = create<AppState>((set) => ({
   setPhoneVerificationSkipped: (phoneVerificationSkipped) => set({ phoneVerificationSkipped }),
   setLanguagePreference: (languagePreference) => set({ languagePreference }),
   setBalance: (usdcBalance) => set({ usdcBalance }),
+  setSolBalanceLamports: (solBalanceLamports) => set({ solBalanceLamports }),
   setCommittees: (committees) => set({ committees, activeGoals: committees }),
   addCommittee: (committee) =>
     set((s) => {

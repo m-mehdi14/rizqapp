@@ -8,7 +8,12 @@ import QRCode from "react-native-qrcode-svg";
 import { Copy, Wallet } from "phosphor-react-native";
 import { GlassCard } from "../../components/GlassCard";
 import { ScreenShell } from "../../components/ScreenShell";
-import { fetchWalletTransactions, type WalletTransactionRow } from "../../api/rizqApi";
+import {
+  fetchSolUsdcRate,
+  fetchWalletSolBalance,
+  fetchWalletTransactions,
+  type WalletTransactionRow,
+} from "../../api/rizqApi";
 import { useWeb3AuthWallet } from "../../hooks/useWeb3AuthWallet";
 import { useAppStore } from "../../store/useAppStore";
 import { colors, radii, spacing, typography } from "../../theme/tokens";
@@ -72,7 +77,7 @@ function toWalletTx(rows: WalletTransactionRow[]): WalletTx[] {
 export function WalletMainScreen() {
   const nav = useNavigation<NavigationProp<ParamListBase>>();
   const wallet = useAppStore((s) => s.wallet);
-  const usdcBalance = useAppStore((s) => s.usdcBalance);
+  const solBalanceLamports = useAppStore((s) => s.solBalanceLamports);
   const committees = useAppStore((s) => s.committees);
   const { connectWeb3AuthWallet } = useWeb3AuthWallet();
   const [connectError, setConnectError] = useState<string | null>(null);
@@ -81,16 +86,24 @@ export function WalletMainScreen() {
     queryFn: () => fetchWalletTransactions(wallet as string),
     enabled: Boolean(wallet),
   });
+  const solRateQuery = useQuery({
+    queryKey: ["sol-usdc-rate-wallet"],
+    queryFn: fetchSolUsdcRate,
+    refetchInterval: 60_000,
+  });
 
   const allTx = useMemo(() => (txQuery.data ? toWalletTx(txQuery.data) : []), [txQuery.data]);
   const txItems = allTx.slice(0, 2);
-  const availableUsdc = Math.max(0, usdcBalance / 1_000_000);
-  const lockedUsdc =
+  const availableSol = Math.max(0, solBalanceLamports / 1_000_000_000);
+  const availableUsdc = availableSol * (solRateQuery.data ?? 0);
+  const lockedSol =
     committees.reduce(
-      (sum, committee) => sum + Math.max(0, committee.contributionLamports ?? 0) / 1_000_000,
+      (sum, committee) => sum + Math.max(0, committee.contributionLamports ?? 0) / 1_000_000_000,
       0
     ) || 0;
-  const pendingUsdc = Math.max(0, lockedUsdc - availableUsdc);
+  const lockedUsdc = lockedSol * (solRateQuery.data ?? 0);
+  const pendingSol = Math.max(0, lockedSol - availableSol);
+  const pendingUsdc = pendingSol * (solRateQuery.data ?? 0);
   const paidOutUsdc = allTx
     .filter((tx) => tx.type === "Payout")
     .reduce((sum, tx) => sum + tx.amountMicroUsdc / 1_000_000, 0);
@@ -101,26 +114,30 @@ export function WalletMainScreen() {
   return (
     <Layout
       title="Wallet"
-      subtitle="Track available, locked, and pending USDC with on-chain history."
+      subtitle="Track SOL balance with USDC equivalents and on-chain activity."
     >
       <GlassCard style={styles.balanceCard}>
         <View style={styles.row}>
           <Wallet color={colors.brandGreen} size={18} />
           <Text style={styles.cardLabel}>Total Balance</Text>
         </View>
-        <Text style={styles.balanceValue}>${availableUsdc.toFixed(2)} USDC</Text>
+        <Text style={styles.balanceValue}>{availableSol.toFixed(4)} SOL</Text>
+        <Text style={styles.balanceSub}>≈ ${availableUsdc.toFixed(2)} USDC</Text>
         <Text style={styles.balanceSub}>
           {wallet
             ? `In-App Wallet · ${wallet.slice(0, 4)}...${wallet.slice(-4)}`
             : "Wallet not connected"}
         </Text>
         <View style={styles.breakdownRow}>
-          <Pill label={`Available $${availableUsdc.toFixed(2)}`} tone="success" />
-          <Pill label={`Locked $${lockedUsdc.toFixed(2)}`} />
-          <Pill label={`Pending $${pendingUsdc.toFixed(2)}`} tone="warning" />
+          <Pill label={`Available ${availableSol.toFixed(4)} SOL`} tone="success" />
+          <Pill label={`Locked ${lockedSol.toFixed(4)} SOL`} />
+          <Pill label={`Pending ${pendingSol.toFixed(4)} SOL`} tone="warning" />
         </View>
         <Text style={styles.balanceSub}>
-          Paid out ${paidOutUsdc.toFixed(2)} • Contributed ${contributedUsdc.toFixed(2)}
+          ≈ Locked ${lockedUsdc.toFixed(2)} USDC • Pending ${pendingUsdc.toFixed(2)} USDC
+        </Text>
+        <Text style={styles.balanceSub}>
+          Committee history: Paid out ${paidOutUsdc.toFixed(2)} • Contributed ${contributedUsdc.toFixed(2)}
         </Text>
       </GlassCard>
 
@@ -197,9 +214,11 @@ export function WalletDepositScreen() {
   const [pollMessage, setPollMessage] = useState<string | null>(null);
   const wallet = useAppStore((s) => s.wallet);
   const usdcBalance = useAppStore((s) => s.usdcBalance);
+  const solBalanceLamports = useAppStore((s) => s.solBalanceLamports);
   const fullAddress = wallet ?? "";
   const qrValue = fullAddress ? `solana:${fullAddress}` : "";
   const baselineBalanceUsdc = usdcBalance / 1_000_000;
+  const baselineBalanceSol = solBalanceLamports / 1_000_000_000;
 
   const checkForDeposit = async () => {
     if (!wallet) {
@@ -207,16 +226,27 @@ export function WalletDepositScreen() {
       return;
     }
     setIsPollingDeposit(true);
-    setPollMessage("Checking chain for your incoming transfer...");
+    setPollMessage("Checking Solana chain for incoming SOL/USDC...");
     let found = false;
+    let detectedAsset: "SOL" | "USDC" | null = null;
     for (let attempt = 0; attempt < 6; attempt += 1) {
       try {
         const updatedUsdc = useAppStore.getState().usdcBalance / 1_000_000;
+        const updatedSol = useAppStore.getState().solBalanceLamports / 1_000_000_000;
         await queryClient.invalidateQueries({ queryKey: ["wallet-usdc", wallet] });
+        await queryClient.invalidateQueries({ queryKey: ["wallet-sol", wallet] });
         await queryClient.refetchQueries({ queryKey: ["wallet-usdc", wallet], type: "active" });
+        await queryClient.refetchQueries({ queryKey: ["wallet-sol", wallet], type: "active" });
+        const latestSol = await fetchWalletSolBalance(wallet);
         const latestUsdc = useAppStore.getState().usdcBalance / 1_000_000;
+        if (latestSol > Math.max(updatedSol, baselineBalanceSol) + 0.000001) {
+          found = true;
+          detectedAsset = "SOL";
+          break;
+        }
         if (latestUsdc > Math.max(updatedUsdc, baselineBalanceUsdc) + 0.000001) {
           found = true;
+          detectedAsset = "USDC";
           break;
         }
       } catch {
@@ -225,13 +255,17 @@ export function WalletDepositScreen() {
       await new Promise((resolve) => setTimeout(resolve, 5000));
     }
     setIsPollingDeposit(false);
-    setPollMessage(found ? "Deposit detected. Wallet balance updated." : "No new deposit detected yet. Try again in a moment.");
+    setPollMessage(
+      found
+        ? `${detectedAsset ?? "Asset"} deposit detected. Wallet balance updated.`
+        : "No new SOL/USDC deposit detected yet. Try again in a moment."
+    );
   };
 
   return (
     <Layout
       title="Deposit USDC"
-      subtitle="Send USDC to this Solana address. Balance refreshes after webhook sync."
+      subtitle="Send SOL or USDC to this Solana address. We detect on-chain balance updates."
     >
       <GlassCard style={styles.qrCard}>
         <View style={styles.qrBox}>
@@ -266,8 +300,8 @@ export function WalletDepositScreen() {
       </GlassCard>
 
       <GlassCard style={styles.card}>
-        <Text style={styles.cardLabel}>Exchange instructions</Text>
-        <Text style={styles.step}>1. Withdraw USDC (Solana network) from Binance/OKX/Kraken.</Text>
+        <Text style={styles.cardLabel}>Transfer instructions</Text>
+        <Text style={styles.step}>1. Send SOL or USDC on Solana network to this address.</Text>
         <Text style={styles.step}>2. Paste the Rizq wallet address above as recipient.</Text>
         <Text style={styles.step}>3. Confirm transaction and return to app.</Text>
       </GlassCard>

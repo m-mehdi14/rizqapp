@@ -1,9 +1,10 @@
 export type BalanceData = {
-  totalUsdc: number;
+  totalSol: number;
+  totalUsdcEquivalent: number;
   pkrEquivalent: number;
-  availableUsdc: number;
-  inCommitteesUsdc: number;
-  pendingPayoutsUsdc: number;
+  availableSol: number;
+  inCommitteesSol: number;
+  pendingPayoutsSol: number;
 };
 
 export type UrgentActionSeverity = "danger" | "warning";
