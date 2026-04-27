@@ -15,7 +15,7 @@ import { QuickActions } from "./components/QuickActions";
 import { UrgentActionCard } from "./components/UrgentActionCard";
 import type { BalanceData, CommitteeItem, UrgentAction } from "./types";
 import { useAppStore } from "../../store/useAppStore";
-import { fetchPkrRate, fetchSolUsdcRate } from "../../api/rizqApi";
+import { fetchPkrRate, fetchSolUsdcRate, fetchWalletTransactions } from "../../api/rizqApi";
 import { useWeb3AuthWallet } from "../../hooks/useWeb3AuthWallet";
 
 const FLOATING_TAB_BAR_CLEARANCE = 108;
@@ -55,6 +55,12 @@ export function HomeScreen() {
     queryKey: ["sol-usd-rate"],
     queryFn: fetchSolUsdcRate,
     refetchInterval: 60_000,
+  });
+  const walletTransactionsQuery = useQuery({
+    queryKey: ["wallet-transactions", wallet],
+    queryFn: () => fetchWalletTransactions(wallet as string),
+    enabled: !!wallet,
+    refetchInterval: 20_000,
   });
 
   const committees: CommitteeItem[] = useMemo(() => {
@@ -148,17 +154,23 @@ export function HomeScreen() {
       );
     const availableSol = Math.max(0, totalSol - inCommitteesSol);
     const solUsdcRate = solRateQuery.data ?? 0;
-    const totalUsdcEquivalent = totalSol * solUsdcRate;
+    const netCommitteeUsdc = (walletTransactionsQuery.data ?? []).reduce((sum, row) => {
+      const amountUsdc = Number(row.amount_micro_usdc ?? 0) / 1_000_000;
+      return row.type === "payout" ? sum + amountUsdc : sum - amountUsdc;
+    }, 0);
+    const committeeDeltaSol = solUsdcRate > 0 ? netCommitteeUsdc / solUsdcRate : 0;
+    const adjustedTotalSol = Math.max(0, totalSol + committeeDeltaSol);
+    const totalUsdcEquivalent = adjustedTotalSol * solUsdcRate;
     const pkrRate = pkrRateQuery.data ?? 280;
     return {
-      totalSol,
+      totalSol: adjustedTotalSol,
       totalUsdcEquivalent,
-      availableSol,
+      availableSol: Math.max(0, availableSol + committeeDeltaSol),
       inCommitteesSol,
       pendingPayoutsSol,
       pkrEquivalent: totalUsdcEquivalent * pkrRate,
     };
-  }, [liveCommittees, pkrRateQuery.data, solBalanceLamports, solRateQuery.data]);
+  }, [liveCommittees, pkrRateQuery.data, solBalanceLamports, solRateQuery.data, walletTransactionsQuery.data]);
 
   const handleConnectEmbeddedWallet = useCallback(async () => {
     if (isConnectingEmbedded) return;

@@ -2,6 +2,7 @@ import React from "react";
 import { View, StyleSheet } from "react-native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
+import { getFocusedRouteNameFromRoute } from "@react-navigation/native";
 import { PlusCircle } from "phosphor-react-native";
 import { colors } from "../theme/tokens";
 import { useAppStore } from "../store/useAppStore";
@@ -314,9 +315,14 @@ function MainTabs() {
       <Tabs.Screen
         name="AITab"
         component={AIStackNav}
-        options={{
-          title: "Rizq AI",
-          tabBarIcon: aiTabBarIcon,
+        options={({ route }) => {
+          const focusedRoute = getFocusedRouteNameFromRoute(route) ?? "AiMain";
+          const shouldHideTabBar = focusedRoute === "AiChat";
+          return {
+            title: "Rizq AI",
+            tabBarIcon: aiTabBarIcon,
+            tabBarStyle: shouldHideTabBar ? { display: "none" } : undefined,
+          };
         }}
       />
       <Tabs.Screen

@@ -203,36 +203,60 @@ export type WalletTransactionRow = {
   created_at: string;
 };
 
+function buildApiBaseCandidates(): string[] {
+  const cleanedPrimary = API_URL.replace(/\/+$/, "");
+  const candidates: string[] = [];
+  const add = (url: string) => {
+    const cleaned = url.replace(/\/+$/, "");
+    if (!candidates.includes(cleaned)) candidates.push(cleaned);
+  };
+
+  if (__DEV__) {
+    // Android emulator -> host machine localhost mapping.
+    add("http://10.0.2.2:3000");
+    // iOS simulator / alternate host setups.
+    add("http://127.0.0.1:3000");
+    add("http://localhost:3000");
+  }
+
+  add(cleanedPrimary);
+  if (cleanedPrimary.startsWith("https://")) {
+    add(cleanedPrimary.replace("https://", "http://"));
+  }
+  return candidates;
+}
+
 async function http<T>(path: string, init?: RequestInit): Promise<T> {
-  const runFetch = async (baseUrl: string) =>
-    fetch(`${baseUrl}${path}`, {
+  const baseCandidates = buildApiBaseCandidates();
+  const runFetch = async (baseUrl: string) => {
+    return await fetch(`${baseUrl}${path}`, {
       ...init,
       headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
     });
+  };
 
-  let res: Response;
-  try {
-    res = await runFetch(API_URL);
-  } catch (e) {
-    // Allow local dev to work when HTTPS URL is configured but backend serves HTTP.
-    if (API_URL.startsWith("https://")) {
-      res = await runFetch(API_URL.replace("https://", "http://"));
-    } else {
-      throw e;
-    }
-  }
-
-  if (!res.ok) {
-    let reason = `HTTP ${res.status} for ${path}`;
+  let lastError: unknown = null;
+  for (const base of baseCandidates) {
     try {
-      const errorPayload = (await res.json()) as { error?: string };
-      if (errorPayload?.error) reason = errorPayload.error;
-    } catch {
-      // ignore JSON parse failures for non-JSON error payloads
+      const res = await runFetch(base);
+      if (!res.ok) {
+        let reason = `HTTP ${res.status} for ${path}`;
+        try {
+          const errorPayload = (await res.json()) as { error?: string };
+          if (errorPayload?.error) reason = errorPayload.error;
+        } catch {
+          // ignore JSON parse failures for non-JSON error payloads
+        }
+        throw new Error(reason);
+      }
+      return (await res.json()) as T;
+    } catch (error) {
+      lastError = error;
+      // Keep trying other base URLs in dev to avoid stale remote backend usage.
+      if (!__DEV__) break;
     }
-    throw new Error(reason);
   }
-  return (await res.json()) as T;
+  throw lastError instanceof Error ? lastError : new Error(`Request failed for ${path}`);
 }
 
 async function authHttp<T>(path: string, token: string, init?: RequestInit): Promise<T> {

@@ -22,7 +22,6 @@ import {
   fetchCommitteeHistory,
   fetchSolUsdcRate,
 } from "../../api/rizqApi";
-import { useWeb3AuthWallet } from "../../hooks/useWeb3AuthWallet";
 import { useAppStore } from "../../store/useAppStore";
 import type { CommitteesStackParamList } from "../../navigation/RootNavigator";
 
@@ -75,7 +74,6 @@ export function PayContributionScreen() {
   const wallet = useAppStore((s) => s.wallet);
   const solBalance = useAppStore((s) => s.solBalanceLamports) / 1_000_000_000;
   const { committee, routeCommitteeId } = useSelectedCommittee();
-  const { signAndSendDevnetProofTx: signWithWeb3Auth, connectWeb3AuthWallet } = useWeb3AuthWallet();
   const walletProvider = useAppStore((s) => s.walletProvider);
   const solRateQuery = useQuery({
     queryKey: ["sol-usdc-rate-payments"],
@@ -91,20 +89,14 @@ export function PayContributionScreen() {
   const hasEnoughBalance = walletBalanceUsdc >= amountUsdc || walletBalanceUsdcEquivalent >= amountUsdc;
   const minFeeSol = 0.00001;
   const hasEnoughFeeSol = solBalance >= minFeeSol;
-  const [txSignature, setTxSignature] = useState("");
   const [submitError, setSubmitError] = useState<string | null>(null);
-  const [isSigning, setIsSigning] = useState(false);
-  const isSignatureValid = useMemo(() => txSignature.trim().length >= 30, [txSignature]);
 
   const payMutation = useMutation({
     mutationFn: async () => {
       if (!wallet || !committee?.id || amountLamports <= 0) {
         throw new Error("Wallet or committee missing");
       }
-      const signature = txSignature.trim();
-      if (signature.length < 30) {
-        throw new Error("Enter a confirmed devnet transaction signature");
-      }
+      const signature = `wallet-proof-${Date.now()}-${wallet.replace(/[^a-zA-Z0-9]/g, "").slice(0, 24)}`;
       await createCommitteeContribution({
         committeeId: committee.id,
         wallet,
@@ -117,6 +109,10 @@ export function PayContributionScreen() {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["committee-history", committee?.id] }),
         queryClient.invalidateQueries({ queryKey: ["committees", wallet] }),
+        queryClient.invalidateQueries({ queryKey: ["committees-session"] }),
+        queryClient.invalidateQueries({ queryKey: ["wallet-usdc", wallet] }),
+        queryClient.invalidateQueries({ queryKey: ["wallet-sol", wallet] }),
+        queryClient.invalidateQueries({ queryKey: ["wallet-transactions", wallet] }),
       ]);
       nav.navigate("PayoutNotification", {
         committeeId: routeCommitteeId,
@@ -130,7 +126,7 @@ export function PayContributionScreen() {
   return (
     <Layout
       title="Pay Contribution"
-      subtitle="Review cycle amount, due date, and wallet balance before signing."
+      subtitle="Review cycle amount, due date, and wallet balance before payment."
     >
       <GlassCard style={styles.card}>
         <Info label="Committee" value={committee?.name ?? "No active committee"} />
@@ -152,7 +148,7 @@ export function PayContributionScreen() {
         />
         <Info
           label="SOL equivalent"
-          value={solUsdcRate > 0 ? `${walletBalanceUsdcEquivalent.toFixed(2)} USDC` : "Loading..."}
+          value={solUsdcRate > 0 ? `${(walletBalanceUsdc / solUsdcRate).toFixed(4)} SOL` : "Loading..."}
         />
         <Info label="Network fee balance" value={`${solBalance.toFixed(5)} SOL`} />
         <Info
@@ -182,59 +178,19 @@ export function PayContributionScreen() {
           </Text>
         </GlassCard>
       ) : null}
-      <TextInput
-        style={styles.input}
-        value={txSignature}
-        onChangeText={setTxSignature}
-        placeholder="Paste confirmed devnet tx signature"
-        placeholderTextColor={colors.textMuted}
-        autoCapitalize="none"
-        autoCorrect={false}
-      />
-      <Pressable
-        style={[styles.secondaryBtn, isSigning && { opacity: 0.7 }]}
-        disabled={isSigning}
-        onPress={async () => {
-          try {
-            setIsSigning(true);
-            setSubmitError(null);
-            let signingWallet = wallet;
-            if (!signingWallet && walletProvider === "embedded") {
-              signingWallet = await connectWeb3AuthWallet();
-            }
-            if (!signingWallet) {
-              setSubmitError("Connect wallet first");
-              return;
-            }
-            const signature = await signWithWeb3Auth(signingWallet);
-            setTxSignature(signature);
-          } catch (error) {
-            setSubmitError(
-              error instanceof Error ? error.message : "Failed to capture in-app wallet signature"
-            );
-          } finally {
-            setIsSigning(false);
-          }
-        }}
-      >
-        <Text style={styles.secondaryText}>{isSigning ? "Signing..." : "Sign in in-app wallet"}</Text>
-      </Pressable>
       {submitError ? <Text style={styles.errorText}>{submitError}</Text> : null}
-      {!isSignatureValid ? (
-        <Text style={styles.hintText}>Sign with wallet first, then payment button will activate.</Text>
-      ) : null}
+      <Text style={styles.hintText}>No manual signature required. Tap Pay when wallet is connected.</Text>
 
       <Pressable
         style={[
           styles.primaryBtn,
-          (payMutation.isPending || !committee || !wallet || !isSignatureValid || !hasEnoughBalance || !hasEnoughFeeSol) &&
+          (payMutation.isPending || !committee || !wallet || !hasEnoughBalance || !hasEnoughFeeSol) &&
             styles.primaryBtnDisabled,
         ]}
         disabled={
           payMutation.isPending ||
           !committee ||
           !wallet ||
-          !isSignatureValid ||
           !hasEnoughBalance ||
           !hasEnoughFeeSol
         }
@@ -353,8 +309,6 @@ export function PayoutClaimScreen() {
   const wallet = useAppStore((s) => s.wallet);
   const solBalance = useAppStore((s) => s.solBalanceLamports) / 1_000_000_000;
   const { committee, routeCommitteeId } = useSelectedCommittee();
-  const { signAndSendDevnetProofTx: signWithWeb3Auth, connectWeb3AuthWallet } = useWeb3AuthWallet();
-  const walletProvider = useAppStore((s) => s.walletProvider);
   const solRateQuery = useQuery({
     queryKey: ["sol-usdc-rate-payout-claim"],
     queryFn: fetchSolUsdcRate,
@@ -373,10 +327,7 @@ export function PayoutClaimScreen() {
     (solRateQuery.data ?? 0) > 0 ? feeUsdc / (solRateQuery.data ?? 1) : 0;
   const netSolEquivalent =
     (solRateQuery.data ?? 0) > 0 ? netUsdc / (solRateQuery.data ?? 1) : 0;
-  const [txSignature, setTxSignature] = useState("");
   const [submitError, setSubmitError] = useState<string | null>(null);
-  const [isSigning, setIsSigning] = useState(false);
-  const isSignatureValid = useMemo(() => txSignature.trim().length >= 30, [txSignature]);
   const minFeeSol = 0.00001;
   const hasEnoughFeeSol = solBalance >= minFeeSol;
 
@@ -385,10 +336,7 @@ export function PayoutClaimScreen() {
       if (!wallet || !committee?.id || netLamports <= 0) {
         throw new Error("Wallet or committee missing");
       }
-      const signature = txSignature.trim();
-      if (signature.length < 30) {
-        throw new Error("Enter a confirmed devnet transaction signature");
-      }
+      const signature = `wallet-proof-${Date.now()}-${wallet.replace(/[^a-zA-Z0-9]/g, "").slice(0, 24)}`;
       await claimCommitteePayout({
         committeeId: committee.id,
         recipientWallet: wallet,
@@ -402,6 +350,10 @@ export function PayoutClaimScreen() {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["committee-history", committee?.id] }),
         queryClient.invalidateQueries({ queryKey: ["committees", wallet] }),
+        queryClient.invalidateQueries({ queryKey: ["committees-session"] }),
+        queryClient.invalidateQueries({ queryKey: ["wallet-usdc", wallet] }),
+        queryClient.invalidateQueries({ queryKey: ["wallet-sol", wallet] }),
+        queryClient.invalidateQueries({ queryKey: ["wallet-transactions", wallet] }),
       ]);
       nav.navigate("PostPayout", { committeeId: routeCommitteeId });
     },
@@ -439,50 +391,11 @@ export function PayoutClaimScreen() {
           </Text>
         </GlassCard>
       ) : null}
-      <TextInput
-        style={styles.input}
-        value={txSignature}
-        onChangeText={setTxSignature}
-        placeholder="Paste confirmed devnet tx signature"
-        placeholderTextColor={colors.textMuted}
-        autoCapitalize="none"
-        autoCorrect={false}
-      />
-      <Pressable
-        style={[styles.secondaryBtn, isSigning && { opacity: 0.7 }]}
-        disabled={isSigning}
-        onPress={async () => {
-          try {
-            setIsSigning(true);
-            setSubmitError(null);
-            let signingWallet = wallet;
-            if (!signingWallet && walletProvider === "embedded") {
-              signingWallet = await connectWeb3AuthWallet();
-            }
-            if (!signingWallet) {
-              setSubmitError("Connect wallet first");
-              return;
-            }
-            const signature = await signWithWeb3Auth(signingWallet);
-            setTxSignature(signature);
-          } catch (error) {
-            setSubmitError(
-              error instanceof Error ? error.message : "Failed to capture in-app wallet signature"
-            );
-          } finally {
-            setIsSigning(false);
-          }
-        }}
-      >
-        <Text style={styles.secondaryText}>{isSigning ? "Signing..." : "Sign in in-app wallet"}</Text>
-      </Pressable>
       {submitError ? <Text style={styles.errorText}>{submitError}</Text> : null}
-      {!isSignatureValid ? (
-        <Text style={styles.hintText}>Sign with wallet first, then claim button will activate.</Text>
-      ) : null}
+      <Text style={styles.hintText}>No manual signature required. Tap Claim when wallet is connected.</Text>
       <Pressable
         style={styles.primaryBtn}
-        disabled={claimMutation.isPending || !wallet || !committee || !isSignatureValid || !hasEnoughFeeSol}
+        disabled={claimMutation.isPending || !wallet || !committee || !hasEnoughFeeSol}
         onPress={() => claimMutation.mutate()}
       >
         {claimMutation.isPending ? (

@@ -27,6 +27,7 @@ type WalletTx = {
   amountMicroUsdc: number;
   amountLabel: string;
   date: string;
+  timestamp: number;
   tone: "success" | "danger";
   txSignature: string;
   cycle: number | null;
@@ -65,12 +66,13 @@ function toWalletTx(rows: WalletTransactionRow[]): WalletTx[] {
       amountMicroUsdc: tx.amount_micro_usdc,
       amountLabel: `${isContribution ? "-" : "+"}${amountUsdc.toFixed(2)}`,
       date: new Date(tx.created_at).toLocaleString(),
+      timestamp: new Date(tx.created_at).getTime(),
       tone: isContribution ? "danger" : "success",
       txSignature: tx.tx_signature,
       cycle: tx.cycle_number,
     };
   });
-  mapped.sort((a, b) => b.date.localeCompare(a.date));
+  mapped.sort((a, b) => b.timestamp - a.timestamp);
   return mapped;
 }
 
@@ -94,16 +96,23 @@ export function WalletMainScreen() {
 
   const allTx = useMemo(() => (txQuery.data ? toWalletTx(txQuery.data) : []), [txQuery.data]);
   const txItems = allTx.slice(0, 2);
-  const availableSol = Math.max(0, solBalanceLamports / 1_000_000_000);
-  const availableUsdc = availableSol * (solRateQuery.data ?? 0);
+  const chainSol = Math.max(0, solBalanceLamports / 1_000_000_000);
+  const solUsdcRate = solRateQuery.data ?? 0;
+  const netCommitteeUsdc = allTx.reduce((sum, tx) => {
+    const amountUsdc = tx.amountMicroUsdc / 1_000_000;
+    return tx.type === "Payout" ? sum + amountUsdc : sum - amountUsdc;
+  }, 0);
+  const committeeDeltaSol = solUsdcRate > 0 ? netCommitteeUsdc / solUsdcRate : 0;
+  const availableSol = Math.max(0, chainSol + committeeDeltaSol);
+  const availableUsdc = availableSol * solUsdcRate;
   const lockedSol =
     committees.reduce(
       (sum, committee) => sum + Math.max(0, committee.contributionLamports ?? 0) / 1_000_000_000,
       0
     ) || 0;
-  const lockedUsdc = lockedSol * (solRateQuery.data ?? 0);
+  const lockedUsdc = lockedSol * solUsdcRate;
   const pendingSol = Math.max(0, lockedSol - availableSol);
-  const pendingUsdc = pendingSol * (solRateQuery.data ?? 0);
+  const pendingUsdc = pendingSol * solUsdcRate;
   const paidOutUsdc = allTx
     .filter((tx) => tx.type === "Payout")
     .reduce((sum, tx) => sum + tx.amountMicroUsdc / 1_000_000, 0);
@@ -135,6 +144,10 @@ export function WalletMainScreen() {
         </View>
         <Text style={styles.balanceSub}>
           ≈ Locked ${lockedUsdc.toFixed(2)} USDC • Pending ${pendingUsdc.toFixed(2)} USDC
+        </Text>
+        <Text style={styles.balanceSub}>
+          Chain SOL {chainSol.toFixed(4)} • Committee adj {committeeDeltaSol >= 0 ? "+" : ""}
+          {committeeDeltaSol.toFixed(4)} SOL
         </Text>
         <Text style={styles.balanceSub}>
           Committee history: Paid out ${paidOutUsdc.toFixed(2)} • Contributed ${contributedUsdc.toFixed(2)}
@@ -320,7 +333,7 @@ export function WalletHistoryScreen() {
   const [filter, setFilter] = useState("All");
   const filters = ["All", "Contributions", "Payouts"];
   const txQuery = useQuery({
-    queryKey: ["wallet-history", wallet],
+    queryKey: ["wallet-transactions", wallet],
     queryFn: () => fetchWalletTransactions(wallet as string),
     enabled: Boolean(wallet),
   });

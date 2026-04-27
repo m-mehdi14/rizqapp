@@ -22,13 +22,12 @@ export function ContributionStatus({ committee, onPayNow }: Props) {
     committee.solUsdcRate && committee.solUsdcRate > 0
       ? committee.nextPaymentAmount / committee.solUsdcRate
       : 0;
+  const primaryAmountLabel = solEquivalent > 0 ? `~${solEquivalent.toFixed(4)} SOL` : "-- SOL";
   return (
     <GlassCard style={styles.card}>
       <Text style={styles.heading}>My Contribution Status</Text>
-      <Text style={styles.amount}>{`$${committee.nextPaymentAmount.toFixed(2)} USDC`}</Text>
-      {solEquivalent > 0 ? (
-        <Text style={styles.amountSub}>{`~${solEquivalent.toFixed(4)} SOL`}</Text>
-      ) : null}
+      <Text style={styles.amount}>{primaryAmountLabel}</Text>
+      <Text style={styles.amountSub}>{`$${committee.nextPaymentAmount.toFixed(2)} USDC`}</Text>
       <Text style={styles.meta}>{`Due ${committee.nextPaymentDueDate} • ${committee.daysRemaining} days left`}</Text>
 
       {!committee.hasPaidCurrentCycle ? (

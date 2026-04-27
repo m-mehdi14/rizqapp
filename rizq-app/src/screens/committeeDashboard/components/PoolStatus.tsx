@@ -13,11 +13,15 @@ export function PoolStatus({ committee, solUsdcRate }: Props) {
   return (
     <GlassCard style={styles.card}>
       <Text style={styles.heading}>Pool Status</Text>
-      <Text style={styles.value}>{`$${committee.poolCurrentUSDC} / $${committee.poolTargetUSDC} USDC`}</Text>
-      <Text style={styles.subValue}>
+      <Text style={styles.value}>
         {currentSol != null && targetSol != null
           ? `~${currentSol.toFixed(4)} / ~${targetSol.toFixed(4)} SOL`
-          : "SOL equivalent loading..."}
+          : "-- / -- SOL"}
+      </Text>
+      <Text style={styles.subValue}>
+        {currentSol != null && targetSol != null
+          ? `$${committee.poolCurrentUSDC} / $${committee.poolTargetUSDC} USDC`
+          : `$${committee.poolCurrentUSDC} / $${committee.poolTargetUSDC} USDC`}
       </Text>
       <View style={styles.track}>
         <View style={[styles.fill, { width: `${Math.min(100, Math.max(0, ratio * 100))}%` }]} />

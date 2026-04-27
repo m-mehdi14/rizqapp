@@ -79,6 +79,13 @@ export function CommitteeDashboardScreen() {
     queryFn: fetchSolUsdcRate,
     refetchInterval: 60_000,
   });
+  const [lastKnownSolUsdcRate, setLastKnownSolUsdcRate] = useState<number | null>(null);
+  useEffect(() => {
+    if (typeof solRateQuery.data === "number" && Number.isFinite(solRateQuery.data) && solRateQuery.data > 0) {
+      setLastKnownSolUsdcRate(solRateQuery.data);
+    }
+  }, [solRateQuery.data]);
+  const effectiveSolUsdcRate = solRateQuery.data ?? lastKnownSolUsdcRate;
 
   const canManage = Boolean(dashboardQuery.data?.committee.is_manager);
   useEffect(() => {
@@ -211,7 +218,7 @@ export function CommitteeDashboardScreen() {
         ? new Date(activeCommittee.nextCycleDate).toISOString().slice(0, 10)
         : dashboardQuery.data?.committee.next_cycle_date?.slice(0, 10) ?? "-",
       daysRemaining: activeCommittee?.daysLeft ?? 0,
-      solUsdcRate: solRateQuery.data ?? null,
+      solUsdcRate: effectiveSolUsdcRate ?? null,
       hasPaidCurrentCycle,
       paidAt,
       poolCurrentUSDC:
@@ -239,6 +246,7 @@ export function CommitteeDashboardScreen() {
   const contributionStatusData = useMemo(
     () => ({
       nextPaymentAmount: Math.max(0, (activeCommittee?.contributionLamports ?? 0) / 1_000_000),
+      solUsdcRate: effectiveSolUsdcRate ?? null,
       nextPaymentDueDate: activeCommittee?.nextCycleDate
         ? new Date(activeCommittee.nextCycleDate).toLocaleDateString()
         : dashboardQuery.data?.committee.next_cycle_date
@@ -255,7 +263,7 @@ export function CommitteeDashboardScreen() {
       dashboardQuery.data?.committee.next_cycle_date,
       hasPaidCurrentCycle,
       paidAt,
-      solRateQuery.data,
+      effectiveSolUsdcRate,
     ]
   );
 
@@ -438,7 +446,7 @@ export function CommitteeDashboardScreen() {
               });
             }}
           />
-          <PoolStatus committee={committeeView} solUsdcRate={solRateQuery.data ?? null} />
+          <PoolStatus committee={committeeView} solUsdcRate={effectiveSolUsdcRate ?? null} />
 
           <AccordionSection title="Members List" defaultOpen>
             <MembersList
@@ -455,7 +463,7 @@ export function CommitteeDashboardScreen() {
           </AccordionSection>
 
           <AccordionSection title="Transaction History" defaultOpen={false}>
-            <TransactionHistory transactions={txRows} solUsdcRate={solRateQuery.data ?? null} />
+            <TransactionHistory transactions={txRows} solUsdcRate={effectiveSolUsdcRate ?? null} />
           </AccordionSection>
 
           <AccordionSection title="Committee Announcements" defaultOpen={false}>

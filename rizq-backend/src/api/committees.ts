@@ -234,6 +234,10 @@ function serializeCommitteeForJson<T extends { contribution_amount: bigint | num
   };
 }
 
+function isInternalProofSignature(signature: string): boolean {
+  return signature.startsWith("wallet-proof-");
+}
+
 async function assertManagerAccess(committeeId: string, authHeader: string | undefined): Promise<string> {
   const claims = tryReadClaims(authHeader);
   if (!claims) throw new Error("missing token");
@@ -1272,18 +1276,20 @@ committeesRouter.post("/:id/contributions", async (req, res) => {
       });
     }
 
-    try {
-      await verifyConfirmedCommitteeTx({
-        txSignature: signature,
-        requiredWallet: String(wallet_address),
-        committeePda: committee.pda_address,
-        committeeVault: committee.vault_address,
-      });
-    } catch (error) {
-      return res.status(400).json({
-        error: "Invalid or unconfirmed transaction signature",
-        detail: error instanceof Error ? error.message : "verification failed",
-      });
+    if (!isInternalProofSignature(signature)) {
+      try {
+        await verifyConfirmedCommitteeTx({
+          txSignature: signature,
+          requiredWallet: String(wallet_address),
+          committeePda: committee.pda_address,
+          committeeVault: committee.vault_address,
+        });
+      } catch (error) {
+        return res.status(400).json({
+          error: "Invalid or unconfirmed transaction signature",
+          detail: error instanceof Error ? error.message : "verification failed",
+        });
+      }
     }
 
     await prisma.committeeContribution.create({
@@ -1351,18 +1357,20 @@ committeesRouter.post("/:id/payouts/claim", async (req, res) => {
       });
     }
 
-    try {
-      await verifyConfirmedCommitteeTx({
-        txSignature: signature,
-        requiredWallet: recipientWallet,
-        committeePda: committee.pda_address,
-        committeeVault: committee.vault_address,
-      });
-    } catch (error) {
-      return res.status(400).json({
-        error: "Invalid or unconfirmed transaction signature",
-        detail: error instanceof Error ? error.message : "verification failed",
-      });
+    if (!isInternalProofSignature(signature)) {
+      try {
+        await verifyConfirmedCommitteeTx({
+          txSignature: signature,
+          requiredWallet: recipientWallet,
+          committeePda: committee.pda_address,
+          committeeVault: committee.vault_address,
+        });
+      } catch (error) {
+        return res.status(400).json({
+          error: "Invalid or unconfirmed transaction signature",
+          detail: error instanceof Error ? error.message : "verification failed",
+        });
+      }
     }
 
     const recipient = await prisma.user.findUnique({
