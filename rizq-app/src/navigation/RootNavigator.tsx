@@ -267,6 +267,7 @@ function MainTabs() {
     <Tabs.Navigator
       screenOptions={{
         headerShown: false,
+        tabBarHideOnKeyboard: true,
         tabBarStyle: {
           position: "absolute",
           marginHorizontal: 20,

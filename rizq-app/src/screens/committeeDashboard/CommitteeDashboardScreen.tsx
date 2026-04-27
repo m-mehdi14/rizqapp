@@ -14,6 +14,7 @@ import {
   fetchCommitteeAnnouncements,
   fetchCommitteeDashboard,
   fetchCommitteeHistory,
+  fetchSolUsdcRate,
   reorderCommitteePayout,
   requestCommitteeOrderChangeApproval,
   sendCommitteePaymentReminder,
@@ -72,6 +73,11 @@ export function CommitteeDashboardScreen() {
     queryFn: () => fetchCommitteeAnnouncements(activeCommittee?.id as string),
     enabled: !!activeCommittee?.id,
     refetchInterval: 15000,
+  });
+  const solRateQuery = useQuery({
+    queryKey: ["sol-usdc-rate-committee-dashboard"],
+    queryFn: fetchSolUsdcRate,
+    refetchInterval: 60_000,
   });
 
   const canManage = Boolean(dashboardQuery.data?.committee.is_manager);
@@ -430,7 +436,7 @@ export function CommitteeDashboardScreen() {
               });
             }}
           />
-          <PoolStatus committee={committeeView} />
+          <PoolStatus committee={committeeView} solUsdcRate={solRateQuery.data ?? null} />
 
           <AccordionSection title="Members List" defaultOpen>
             <MembersList
@@ -447,7 +453,7 @@ export function CommitteeDashboardScreen() {
           </AccordionSection>
 
           <AccordionSection title="Transaction History" defaultOpen={false}>
-            <TransactionHistory transactions={txRows} />
+            <TransactionHistory transactions={txRows} solUsdcRate={solRateQuery.data ?? null} />
           </AccordionSection>
 
           <AccordionSection title="Committee Announcements" defaultOpen={false}>

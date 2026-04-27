@@ -11,9 +11,9 @@ export type TransactionHistoryItem = {
   explorerUrl: string;
 };
 
-type Props = { transactions: TransactionHistoryItem[] };
+type Props = { transactions: TransactionHistoryItem[]; solUsdcRate: number | null };
 
-export function TransactionHistory({ transactions }: Props) {
+export function TransactionHistory({ transactions, solUsdcRate }: Props) {
   return (
     <GlassCard style={styles.card}>
       <Text style={styles.heading}>Transaction History</Text>
@@ -28,7 +28,12 @@ export function TransactionHistory({ transactions }: Props) {
                 <Text style={styles.date}>{tx.date}</Text>
               </View>
               <View style={styles.right}>
-                <Text style={styles.amount}>{`${tx.amount} USDC`}</Text>
+                <Text style={styles.amount}>{`${tx.amount.toFixed(2)} USDC`}</Text>
+                <Text style={styles.subAmount}>
+                  {solUsdcRate && solUsdcRate > 0
+                    ? `~${(tx.amount / solUsdcRate).toFixed(4)} SOL`
+                    : "SOL eq loading..."}
+                </Text>
                 <Pressable onPress={() => Linking.openURL(tx.explorerUrl).catch(() => undefined)}>
                   <Text style={styles.link}>Explorer</Text>
                 </Pressable>
@@ -62,5 +67,6 @@ const styles = StyleSheet.create({
   date: { color: colors.textSecondary, fontSize: typography.caption, marginTop: 2 },
   right: { alignItems: "flex-end" },
   amount: { color: colors.textPrimary, fontSize: typography.bodySmall, fontWeight: "700" },
+  subAmount: { color: colors.textSecondary, fontSize: typography.caption, marginTop: 1 },
   link: { color: "#40C4FF", fontSize: typography.caption, textDecorationLine: "underline", marginTop: 2 },
 });

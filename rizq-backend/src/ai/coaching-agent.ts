@@ -1,4 +1,3 @@
-import Anthropic from "@anthropic-ai/sdk";
 import { config } from "../config";
 
 export type CommitteeCoachingContext = {
@@ -12,7 +11,7 @@ export type CommitteeCoachingContext = {
   pkrRate: number;
 };
 
-const MODEL = "claude-sonnet-4-20250514";
+const FALLBACK_MODEL = "gemini-1.5-flash";
 
 export function buildSystemPrompt(ctx: CommitteeCoachingContext): string {
   const daysLeft = Math.max(
@@ -56,19 +55,46 @@ export async function generateCoaching(
   ctx: CommitteeCoachingContext,
   userPrompt = "Generate my weekly coaching message."
 ): Promise<string> {
-  if (!config.anthropicApiKey) {
-    return "Coaching unavailable: set ANTHROPIC_API_KEY on the server.";
+  const apiKey = config.geminiApiKey;
+  if (!apiKey) {
+    return "Coaching unavailable: set GEMINI_API_KEY on the server.";
   }
-  const client = new Anthropic({ apiKey: config.anthropicApiKey });
-  const msg = await client.messages.create({
-    model: MODEL,
-    max_tokens: 200,
-    system: buildSystemPrompt(ctx),
-    messages: [{ role: "user", content: userPrompt }],
-  });
-  const block = msg.content[0];
-  if (block.type !== "text") {
-    throw new Error("Unexpected Anthropic response shape");
+  const model = config.geminiModel || FALLBACK_MODEL;
+  const response = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-goog-api-key": apiKey,
+      },
+      body: JSON.stringify({
+        contents: [
+          {
+            parts: [
+              {
+                text: `${buildSystemPrompt(ctx)}\n\nUser prompt: ${userPrompt}`,
+              },
+            ],
+          },
+        ],
+        generationConfig: {
+          temperature: 0.7,
+          maxOutputTokens: 220,
+        },
+      }),
+    }
+  );
+  if (!response.ok) {
+    const errBody = await response.text();
+    throw new Error(`Gemini request failed (${response.status}): ${errBody}`);
   }
-  return block.text;
+  const payload = (await response.json()) as {
+    candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+  };
+  const text = payload.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+  if (!text) {
+    throw new Error("Unexpected Gemini response shape");
+  }
+  return text;
 }

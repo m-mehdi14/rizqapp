@@ -25,12 +25,11 @@ export function HomeScreen() {
   const insets = useSafeAreaInsets();
   const { connectWeb3AuthWallet } = useWeb3AuthWallet();
   const wallet = useAppStore((s) => s.wallet);
-  const userId = useAppStore((s) => s.userId);
-  const displayName = useAppStore((s) => s.displayName);
   const solBalanceLamports = useAppStore((s) => s.solBalanceLamports);
   const liveCommittees = useAppStore((s) => s.committees);
   const [isConnectingEmbedded, setIsConnectingEmbedded] = useState(false);
   const [walletError, setWalletError] = useState<string | null>(null);
+  const [showConnectCard, setShowConnectCard] = useState(true);
   const activeCommitteeId = liveCommittees[0]?.id;
   const urgentAction = useMemo<UrgentAction | null>(() => {
     const urgentCommittee = liveCommittees.find((committee) => committee.daysLeft <= 2);
@@ -191,49 +190,6 @@ export function HomeScreen() {
           showsVerticalScrollIndicator={false}
         >
           <Header unreadCount={unreadCount} onPressNotifications={() => navigation.navigate("Notifications")} />
-          <View style={styles.connectWallet}>
-            {!wallet ? (
-              <>
-                <Text style={styles.connectWalletTitle}>Connect In-App Wallet</Text>
-                <Text style={styles.connectWalletSub}>
-                  Connect with Rizq in-app wallet to unlock committee actions and real on-chain activity.
-                </Text>
-                <Pressable
-                  style={({ pressed }) => [
-                    styles.connectWalletButton,
-                    pressed ? styles.connectWalletButtonPressed : null,
-                    isConnectingEmbedded ? styles.connectWalletButtonDisabled : null,
-                  ]}
-                  disabled={isConnectingEmbedded}
-                  onPress={handleConnectEmbeddedWallet}
-                >
-                  {isConnectingEmbedded ? (
-                    <ActivityIndicator size="small" color={colors.textInverse} />
-                  ) : (
-                    <Text style={styles.connectWalletButtonText}>Connect In-App Wallet</Text>
-                  )}
-                </Pressable>
-                {walletError ? <Text style={styles.walletErrorText}>{walletError}</Text> : null}
-              </>
-            ) : (
-              <>
-                <View style={styles.walletConnectedBadge}>
-                  <Text style={styles.walletConnectedBadgeText}>Connected</Text>
-                </View>
-                <Text style={styles.connectWalletTitle}>In-App Wallet Linked</Text>
-                <Text style={styles.connectWalletSub}>
-                  {wallet.slice(0, 4)}...{wallet.slice(-4)}
-                </Text>
-                <Text style={styles.connectWalletProvider}>
-                  Provider: In-App Wallet
-                </Text>
-                <Text style={styles.identityText}>
-                  {displayName ? `${displayName} · ` : ""}
-                  {userId ? `User ${userId.slice(0, 8)}` : "Connected user"}
-                </Text>
-              </>
-            )}
-          </View>
 
           <BalanceCard
             balance={balance}
@@ -243,6 +199,39 @@ export function HomeScreen() {
               })
             }
           />
+          {!wallet && showConnectCard ? (
+            <View style={styles.connectWallet}>
+              <View style={styles.connectHeaderRow}>
+                <Text style={styles.connectWalletTitle}>Connect In-App Wallet</Text>
+                <Pressable
+                  style={styles.closeButton}
+                  onPress={() => setShowConnectCard(false)}
+                  accessibilityRole="button"
+                >
+                  <Text style={styles.closeButtonText}>X</Text>
+                </Pressable>
+              </View>
+              <Text style={styles.connectWalletSub}>
+                Connect with Rizq in-app wallet to unlock committee actions.
+              </Text>
+              <Pressable
+                style={({ pressed }) => [
+                  styles.connectWalletButton,
+                  pressed ? styles.connectWalletButtonPressed : null,
+                  isConnectingEmbedded ? styles.connectWalletButtonDisabled : null,
+                ]}
+                disabled={isConnectingEmbedded}
+                onPress={handleConnectEmbeddedWallet}
+              >
+                {isConnectingEmbedded ? (
+                  <ActivityIndicator size="small" color={colors.textInverse} />
+                ) : (
+                  <Text style={styles.connectWalletButtonText}>Connect In-App Wallet</Text>
+                )}
+              </Pressable>
+              {walletError ? <Text style={styles.walletErrorText}>{walletError}</Text> : null}
+            </View>
+          ) : null}
 
           <SectionHeader title="Quick Actions" />
           <QuickActions
@@ -371,7 +360,14 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(0,230,118,0.4)",
     backgroundColor: "rgba(0,230,118,0.12)",
-    padding: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 6,
+  },
+  connectHeaderRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     gap: 8,
   },
   connectWalletTitle: {
@@ -394,6 +390,21 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  closeButton: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.3)",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.08)",
+  },
+  closeButtonText: {
+    color: colors.textPrimary,
+    fontSize: typography.caption,
+    fontWeight: "700",
+  },
   connectWalletButtonPressed: {
     opacity: 0.85,
   },
@@ -405,35 +416,8 @@ const styles = StyleSheet.create({
     fontSize: typography.bodySmall,
     fontWeight: "700",
   },
-  connectWalletProvider: {
-    color: colors.info,
-    fontSize: typography.caption,
-    fontWeight: "700",
-  },
   walletErrorText: {
     color: "#ffd1d1",
-    fontSize: typography.caption,
-  },
-  walletHintText: {
-    color: colors.textSecondary,
-    fontSize: typography.caption,
-  },
-  walletConnectedBadge: {
-    alignSelf: "flex-start",
-    borderRadius: 99,
-    borderWidth: 1,
-    borderColor: "rgba(76, 175, 80, 0.45)",
-    backgroundColor: "rgba(76, 175, 80, 0.2)",
-    paddingVertical: 4,
-    paddingHorizontal: 10,
-  },
-  walletConnectedBadgeText: {
-    color: "#8DFFAA",
-    fontSize: typography.caption,
-    fontWeight: "700",
-  },
-  identityText: {
-    color: colors.textSecondary,
     fontSize: typography.caption,
   },
   liveAlertList: {

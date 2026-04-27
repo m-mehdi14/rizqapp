@@ -3,6 +3,8 @@ import "dotenv/config";
 export const config = {
   port: Number(process.env.PORT) || 3000,
   anthropicApiKey: process.env.ANTHROPIC_API_KEY ?? "",
+  geminiApiKey: process.env.GEMINI_API_KEY ?? "",
+  geminiModel: process.env.GEMINI_MODEL ?? "gemini-1.5-flash",
   databaseUrl:
     process.env.NEON_DATABASE_URL ??
     process.env.DATABASE_URL ??

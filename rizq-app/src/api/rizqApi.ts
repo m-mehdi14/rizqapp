@@ -34,6 +34,30 @@ type CoachingRow = {
   created_at: string;
 };
 
+export type RizqScorePayload = {
+  score: number;
+  trend_30d: number;
+  breakdown: {
+    payments_on_time: number;
+    committees_completed: number;
+    nominee_added: number;
+    account_age: number;
+    committee_consistency: number;
+  };
+  stats: {
+    contribution_count: number;
+    payouts_received: number;
+    active_committees: number;
+    completed_committees: number;
+    account_age_days: number;
+    nominee_exists: boolean;
+  };
+};
+
+export type AiChatPayload = {
+  message: string;
+};
+
 export type RegisteredUser = {
   id: string;
   wallet_address: string;
@@ -610,6 +634,25 @@ export async function fetchCoaching(
       `/api/goals/${encodeURIComponent(committeeId)}/coaching`
     );
   }
+}
+
+export async function fetchRizqScore(userId: string): Promise<RizqScorePayload> {
+  return await http<RizqScorePayload>(`/api/ai/rizq-score/${encodeURIComponent(userId)}`);
+}
+
+export async function sendAiChatMessage(input: {
+  committeeId: string;
+  userId: string;
+  prompt: string;
+}): Promise<AiChatPayload> {
+  return await http<AiChatPayload>("/api/ai/chat", {
+    method: "POST",
+    body: JSON.stringify({
+      committee_id: input.committeeId,
+      user_id: input.userId,
+      prompt: input.prompt,
+    }),
+  });
 }
 
 export async function fetchPkrRate(): Promise<number> {

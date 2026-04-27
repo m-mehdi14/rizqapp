@@ -153,7 +153,12 @@ export function useWeb3AuthWallet() {
       );
       const solanaWallet = new SolanaWallet(client.provider);
       const result = await solanaWallet.signAndSendTransaction(tx);
-      const signature = result.signature;
+      const signature =
+        typeof result === "string"
+          ? result
+          : typeof (result as { signature?: unknown })?.signature === "string"
+            ? ((result as { signature: string }).signature)
+            : null;
       if (!signature) throw new Error("No signature returned from Web3Auth wallet.");
       await connection.confirmTransaction(
         {

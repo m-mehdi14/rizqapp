@@ -1,11 +1,26 @@
-import React, { useMemo, useState } from "react";
-import { Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import React, { useMemo, useRef, useState } from "react";
+import {
+  ActivityIndicator,
+  FlatList,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import type { NavigationProp, ParamListBase } from "@react-navigation/native";
 import { ChartLineUp, ChatCircleText, Sparkle } from "phosphor-react-native";
 import { GlassCard } from "../../components/GlassCard";
 import { ScreenShell } from "../../components/ScreenShell";
 import { colors, radii, spacing, typography } from "../../theme/tokens";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { fetchRizqScore, sendAiChatMessage } from "../../api/rizqApi";
+import { useAppStore } from "../../store/useAppStore";
 
 const FLOATING_TAB_BAR_CLEARANCE = 108;
 
@@ -41,6 +56,9 @@ function Layout({
 
 export function AiMainScreen() {
   const nav = useNavigation<NavigationProp<ParamListBase>>();
+  const committees = useAppStore((s) => s.committees);
+  const activeCount = committees.filter((c) => (c.status ?? "").toLowerCase() !== "complete").length;
+  const upcomingCommittee = committees.find((c) => Boolean(c.nextCycleDate));
   return (
     <Layout
       title="Rizq AI Coach"
@@ -51,17 +69,30 @@ export function AiMainScreen() {
           <Sparkle color={colors.brandPurple} size={18} />
           <Text style={styles.cardTitle}>This week message</Text>
         </View>
-        <Text style={styles.messageText}>
-          Bhai, apki committee discipline achi ja rahi hai. Pay 24 hours before due date to keep
-          your Rizq score strong and reduce last-minute pressure.
+        <Text style={styles.cardMessageText}>
+          {upcomingCommittee
+            ? `Aap ki "${upcomingCommittee.name}" committee pe focus rakhein. Due date se 24 ghantay pehle payment plan karein, score aur trust dono strong rahenge.`
+            : "Committee join/create karte hi AI personalized weekly plan aur due-date reminders dega."}
         </Text>
       </GlassCard>
 
       <GlassCard style={styles.healthCard}>
         <Text style={styles.cardTitle}>Committee Health Summary</Text>
-        <HealthRow name="Wedding Support" state="Payment due" tone="warning" />
-        <HealthRow name="Ramzan Savings" state="On track" tone="success" />
-        <HealthRow name="Family Education" state="Overdue member" tone="danger" />
+        <HealthRow
+          name="Active committees"
+          state={`${activeCount}`}
+          tone={activeCount > 0 ? "success" : "warning"}
+        />
+        <HealthRow
+          name="Total committees"
+          state={`${committees.length}`}
+          tone={committees.length > 0 ? "success" : "warning"}
+        />
+        <HealthRow
+          name="AI context readiness"
+          state={committees.length > 0 ? "Live data ready" : "Create/join needed"}
+          tone={committees.length > 0 ? "success" : "danger"}
+        />
       </GlassCard>
 
       <View style={styles.promptWrap}>
@@ -87,114 +118,208 @@ export function AiMainScreen() {
 }
 
 export function AiChatScreen() {
+  const userId = useAppStore((s) => s.userId);
+  const committees = useAppStore((s) => s.committees);
+  const selectedCommitteeId = committees[0]?.id ?? "";
   const [draft, setDraft] = useState("");
-  const messages = useMemo(
-    () => [
-      {
-        id: "m1",
-        role: "user" as const,
-        body: "When is my next payment due?",
-        time: "2:14 PM",
-      },
-      {
-        id: "m2",
-        role: "ai" as const,
-        body: "Your next committee payment is due on 9 May. Aap 1 din pehle pay kar dein to late risk avoid hoga.",
-        time: "2:14 PM",
-      },
-      {
-        id: "m3",
-        role: "user" as const,
-        body: "Kitna amount rakhna hai wallet mein?",
-        time: "2:15 PM",
-      },
-      {
-        id: "m4",
-        role: "ai" as const,
-        body: "Current cycle ke liye 30 USDC enough hai. Safe side pe 32 USDC rakhein for fees fluctuation.",
-        time: "2:15 PM",
-      },
-    ],
-    []
-  );
-  return (
-    <Layout
-      title="AI Chat"
-      subtitle="Ask in English, Urdu, or mixed. Response uses your live committee context."
-    >
-      <GlassCard style={styles.chatCard}>
-        <View style={styles.chatHeader}>
-          <Text style={styles.chatHeaderTitle}>Rizq Assistant</Text>
-          <Text style={styles.chatHeaderMeta}>Live committee context</Text>
-        </View>
+  const [messages, setMessages] = useState<
+    Array<{ id: string; role: "user" | "ai"; body: string; time: string }>
+  >([
+    {
+      id: "welcome",
+      role: "ai",
+      body: "Assalam o Alaikum! Committee ya payment se related kuch bhi poochna ho, I am here.",
+      time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+    },
+  ]);
+  const listRef = useRef<FlatList<{ id: string; role: "user" | "ai"; body: string; time: string }>>(null);
 
-        <View style={styles.chatList}>
-          {messages.map((message) => (
-            <View
-              key={message.id}
-              style={[
-                styles.messageWrap,
-                message.role === "user" ? styles.messageWrapUser : styles.messageWrapAi,
-              ]}
-            >
-              <View
-                style={[
-                  styles.messageBubble,
-                  message.role === "user" ? styles.messageBubbleUser : styles.messageBubbleAi,
-                ]}
-              >
-                <Text style={styles.messageText}>{message.body}</Text>
-              </View>
-              <Text
-                style={[
-                  styles.messageTime,
-                  message.role === "user" ? styles.messageTimeUser : styles.messageTimeAi,
-                ]}
-              >
-                {message.time}
+  const sendMutation = useMutation({
+    mutationFn: async (prompt: string) => {
+      if (!selectedCommitteeId || !userId) {
+        throw new Error("Join or create a committee first to start AI chat.");
+      }
+      return await sendAiChatMessage({
+        committeeId: selectedCommitteeId,
+        userId,
+        prompt,
+      });
+    },
+    onSuccess: (payload) => {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `ai-${Date.now()}`,
+          role: "ai",
+          body: payload.message,
+          time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        },
+      ]);
+      setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 50);
+    },
+    onError: (error) => {
+      const text = error instanceof Error ? error.message : "AI response unavailable. Please retry.";
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `err-${Date.now()}`,
+          role: "ai",
+          body: text,
+          time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        },
+      ]);
+      setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 50);
+    },
+  });
+
+  const canSend = draft.trim().length > 0 && !sendMutation.isPending;
+  const headerSubtitle = useMemo(() => {
+    if (!userId) return "Login required for AI chat.";
+    if (!selectedCommitteeId) return "Create/join committee to enable live context.";
+    return "Live context enabled from your first committee.";
+  }, [selectedCommitteeId, userId]);
+
+  const onSend = () => {
+    const prompt = draft.trim();
+    if (!prompt || sendMutation.isPending) return;
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: `user-${Date.now()}`,
+        role: "user",
+        body: prompt,
+        time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      },
+    ]);
+    setDraft("");
+    setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 30);
+    sendMutation.mutate(prompt);
+  };
+
+  return (
+    <ScreenShell variant="ai">
+      <SafeAreaView style={{ flex: 1 }}>
+        <KeyboardAvoidingView
+          style={styles.chatScreenWrap}
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+          keyboardVerticalOffset={Platform.OS === "ios" ? 8 : 0}
+        >
+          <View style={styles.chatTopArea}>
+            <Text style={styles.title}>AI Chat</Text>
+            <Text style={styles.subtitle}>{headerSubtitle}</Text>
+          </View>
+
+          <GlassCard style={styles.chatCardLarge}>
+            <View style={styles.chatHeader}>
+              <Text style={styles.chatHeaderTitle}>Rizq Assistant</Text>
+              <Text style={styles.chatHeaderMeta}>
+                {selectedCommitteeId ? "Connected to committee data" : "No committee connected"}
               </Text>
             </View>
-          ))}
-        </View>
-      </GlassCard>
 
-      <View style={styles.inputRow}>
-        <TextInput
-          value={draft}
-          onChangeText={setDraft}
-          placeholder="Ask Rizq AI..."
-          placeholderTextColor={colors.textMuted}
-          style={styles.chatInput}
-          multiline
-        />
-        <Pressable style={styles.sendBtn} onPress={() => setDraft("")}>
-          <ChatCircleText color={colors.textInverse} size={20} />
-        </Pressable>
-      </View>
-    </Layout>
+            <FlatList
+              ref={listRef}
+              data={messages}
+              keyExtractor={(item) => item.id}
+              contentContainerStyle={styles.chatList}
+              showsVerticalScrollIndicator={false}
+              onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: true })}
+              renderItem={({ item: message }) => (
+                <View
+                  style={[
+                    styles.messageWrap,
+                    message.role === "user" ? styles.messageWrapUser : styles.messageWrapAi,
+                  ]}
+                >
+                  <View
+                    style={[
+                      styles.messageBubble,
+                      message.role === "user" ? styles.messageBubbleUser : styles.messageBubbleAi,
+                    ]}
+                  >
+                    <Text style={styles.chatMessageText}>{message.body}</Text>
+                  </View>
+                  <Text
+                    style={[
+                      styles.messageTime,
+                      message.role === "user" ? styles.messageTimeUser : styles.messageTimeAi,
+                    ]}
+                  >
+                    {message.time}
+                  </Text>
+                </View>
+              )}
+            />
+
+            {sendMutation.isPending ? (
+              <View style={styles.typingRow}>
+                <ActivityIndicator size="small" color={colors.brandPurple} />
+                <Text style={styles.chatHeaderMeta}>Rizq AI is replying...</Text>
+              </View>
+            ) : null}
+          </GlassCard>
+
+          <View style={styles.inputRowPinned}>
+            <TextInput
+              value={draft}
+              onChangeText={setDraft}
+              placeholder="Ask Rizq AI..."
+              placeholderTextColor={colors.textMuted}
+              style={styles.chatInput}
+              multiline
+              returnKeyType="send"
+            />
+            <Pressable
+              style={[styles.sendBtn, !canSend && styles.sendBtnDisabled]}
+              onPress={onSend}
+              disabled={!canSend}
+            >
+              <ChatCircleText color={colors.textInverse} size={20} />
+            </Pressable>
+          </View>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
+    </ScreenShell>
   );
 }
 
 export function RizqScoreScreen() {
+  const userId = useAppStore((s) => s.userId);
+  const scoreQuery = useQuery({
+    queryKey: ["rizq-score", userId],
+    queryFn: () => fetchRizqScore(userId as string),
+    enabled: Boolean(userId),
+    refetchInterval: 60_000,
+  });
+  const score = scoreQuery.data?.score ?? 0;
+  const trend30d = scoreQuery.data?.trend_30d ?? 0;
+  const breakdown = scoreQuery.data?.breakdown;
   return (
     <Layout
       title="Rizq Score"
       subtitle="Your reliability score from 0-1000 based on contribution behavior and profile completeness."
     >
       <GlassCard style={styles.scoreCard}>
-        <Text style={styles.scoreValue}>742</Text>
-        <Text style={styles.scoreSub}>+18 this month</Text>
+        <Text style={styles.scoreValue}>{score}</Text>
+        <Text style={styles.scoreSub}>
+          {trend30d >= 0 ? `+${trend30d}` : trend30d} in last 30 days
+        </Text>
       </GlassCard>
       <GlassCard style={styles.healthCard}>
         <View style={styles.row}>
           <ChartLineUp color={colors.brandGreen} size={18} />
           <Text style={styles.cardTitle}>Factors</Text>
         </View>
-        <FactorRow label="On-time payments" value="Excellent" />
-        <FactorRow label="Committees completed" value="Strong" />
-        <FactorRow label="Nominee profile" value="Pending update" />
-        <FactorRow label="Account age" value="Growing" />
+        <FactorRow label="On-time payments" value={String(breakdown?.payments_on_time ?? 0)} />
+        <FactorRow label="Committees completed" value={String(breakdown?.committees_completed ?? 0)} />
+        <FactorRow label="Nominee profile" value={String(breakdown?.nominee_added ?? 0)} />
+        <FactorRow label="Account age" value={String(breakdown?.account_age ?? 0)} />
+        <FactorRow label="Consistency" value={String(breakdown?.committee_consistency ?? 0)} />
       </GlassCard>
+      {scoreQuery.isLoading ? <Text style={styles.secondaryBtnText}>Loading score...</Text> : null}
+      {scoreQuery.isError ? (
+        <Text style={[styles.secondaryBtnText, { color: colors.danger }]}>Could not load Rizq Score.</Text>
+      ) : null}
       <Pressable style={styles.secondaryBtn}>
         <Text style={styles.secondaryBtnText}>Share score card</Text>
       </Pressable>
@@ -243,7 +368,7 @@ const styles = StyleSheet.create({
   row: { flexDirection: "row", alignItems: "center", gap: 8 },
   messageCard: { padding: 14, gap: 9 },
   cardTitle: { color: colors.textPrimary, fontSize: typography.body, fontWeight: "700" },
-  messageText: { color: colors.textPrimary, fontSize: typography.bodySmall, lineHeight: 22 },
+  cardMessageText: { color: colors.textPrimary, fontSize: typography.bodySmall, lineHeight: 22 },
   healthCard: { padding: 14, gap: 8 },
   healthRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 10 },
   healthName: { color: colors.textSecondary, fontSize: typography.bodySmall, flex: 1 },
@@ -276,7 +401,17 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   secondaryBtnText: { color: colors.textPrimary, fontSize: typography.bodySmall, fontWeight: "600" },
-  chatCard: {
+  chatScreenWrap: {
+    flex: 1,
+    paddingTop: spacing.section,
+    paddingHorizontal: spacing.screenX,
+    paddingBottom: 12,
+    gap: 10,
+  },
+  chatTopArea: { gap: 6 },
+  chatCardLarge: {
+    flex: 1,
+    minHeight: 420,
     padding: 12,
     gap: 10,
     borderWidth: 1,
@@ -291,7 +426,7 @@ const styles = StyleSheet.create({
   },
   chatHeaderTitle: { color: colors.textPrimary, fontSize: typography.body, fontWeight: "800" },
   chatHeaderMeta: { color: colors.textSecondary, fontSize: typography.caption },
-  chatList: { gap: 8 },
+  chatList: { gap: 8, paddingBottom: 8 },
   messageWrap: { gap: 3, maxWidth: "88%" },
   messageWrapUser: { alignSelf: "flex-end", alignItems: "flex-end" },
   messageWrapAi: { alignSelf: "flex-start", alignItems: "flex-start" },
@@ -312,15 +447,16 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255,255,255,0.06)",
     borderBottomLeftRadius: 4,
   },
-  messageText: { color: colors.textPrimary, fontSize: typography.bodySmall, lineHeight: 21 },
+  chatMessageText: { color: colors.textPrimary, fontSize: typography.bodySmall, lineHeight: 21 },
   messageTime: { color: colors.textMuted, fontSize: 11 },
   messageTimeUser: { textAlign: "right" },
   messageTimeAi: { textAlign: "left" },
-  inputRow: { flexDirection: "row", gap: 8, marginTop: 4 },
+  typingRow: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 4, paddingBottom: 2 },
+  inputRowPinned: { flexDirection: "row", gap: 8, alignItems: "flex-end", paddingBottom: 4 },
   chatInput: {
     flex: 1,
     minHeight: 52,
-    maxHeight: 120,
+    maxHeight: 132,
     borderRadius: radii.input,
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.14)",
@@ -337,6 +473,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  sendBtnDisabled: { opacity: 0.45 },
   scoreCard: {
     alignItems: "center",
     paddingVertical: 18,

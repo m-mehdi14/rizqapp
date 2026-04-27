@@ -6,7 +6,6 @@ import { useMutation } from "@tanstack/react-query";
 import { Crown, GearSix, IdentificationCard, ShieldCheck, UserCircle } from "phosphor-react-native";
 import { GlassCard } from "../../components/GlassCard";
 import { ScreenShell } from "../../components/ScreenShell";
-import { updateSessionProfile } from "../../api/rizqApi";
 import { persistAuthToken } from "../../hooks/useAuthSessionBootstrap";
 import { useWeb3AuthWallet } from "../../hooks/useWeb3AuthWallet";
 import { useAppStore } from "../../store/useAppStore";
@@ -76,41 +75,12 @@ export function ProfileMainScreen() {
 
 export function SettingsMainScreen() {
   const [notifEnabled, setNotifEnabled] = useState(true);
-  const authToken = useAppStore((s) => s.authToken);
-  const displayName = useAppStore((s) => s.displayName);
-  const username = useAppStore((s) => s.username);
-  const languagePreference = useAppStore((s) => s.languagePreference);
-  const setProfileIdentity = useAppStore((s) => s.setProfileIdentity);
-  const setLanguagePreference = useAppStore((s) => s.setLanguagePreference);
   const wallet = useAppStore((s) => s.wallet);
   const setWalletConnection = useAppStore((s) => s.setWalletConnection);
   const { connectWeb3AuthWallet, logoutWeb3AuthWallet } = useWeb3AuthWallet();
-  const [nameInput, setNameInput] = useState(displayName);
-  const [usernameInput, setUsernameInput] = useState(username);
   const [settingsError, setSettingsError] = useState<string | null>(null);
   const clearSession = useAppStore((s) => s.clearSession);
   const nav = useNavigation<NavigationProp<ParamListBase>>();
-  const saveProfileMutation = useMutation({
-    mutationFn: async () => {
-      if (!authToken) throw new Error("Session missing");
-      return await updateSessionProfile({
-        token: authToken,
-        displayName: nameInput.trim() || undefined,
-        username: usernameInput.trim() || undefined,
-        languagePref: languagePreference,
-      });
-    },
-    onSuccess: (user) => {
-      setSettingsError(null);
-      setProfileIdentity({
-        displayName: user.display_name ?? "",
-        username: user.username ?? "",
-      });
-    },
-    onError: (error) => {
-      setSettingsError(error instanceof Error ? error.message : "Failed to save profile");
-    },
-  });
   return (
     <Layout
       title="Settings"
@@ -120,49 +90,6 @@ export function SettingsMainScreen() {
         <Section icon={<UserCircle color={colors.info} size={16} />} title="Account" body="Display name, username, profile photo, and account deletion controls." />
         <Section icon={<IdentificationCard color={colors.warning} size={16} />} title="Identity & Safety" body="KYC status, nominee details, wallet management, and security lock settings." />
         <Section icon={<GearSix color={colors.textSecondary} size={16} />} title="App Preferences" body="Language, currency display, theme, and AI coach language." />
-      </GlassCard>
-
-      <GlassCard style={styles.card}>
-        <Text style={styles.sectionTitle}>Profile Settings</Text>
-        <TextInput
-          style={styles.input}
-          value={nameInput}
-          onChangeText={setNameInput}
-          placeholder="Display name"
-          placeholderTextColor={colors.textMuted}
-        />
-        <TextInput
-          style={styles.input}
-          value={usernameInput}
-          onChangeText={setUsernameInput}
-          placeholder="Username"
-          placeholderTextColor={colors.textMuted}
-          autoCapitalize="none"
-        />
-        <View style={styles.toggleRow}>
-          {(["english", "urdu", "both"] as const).map((value) => (
-            <Pressable
-              key={value}
-              style={[styles.toggle, languagePreference === value && styles.toggleOn]}
-              onPress={() => setLanguagePreference(value)}
-            >
-              <Text
-                style={[
-                  styles.toggleText,
-                  languagePreference === value && styles.toggleTextOn,
-                ]}
-              >
-                {value}
-              </Text>
-            </Pressable>
-          ))}
-        </View>
-        {settingsError ? <Text style={styles.help}>{settingsError}</Text> : null}
-        <Pressable style={styles.primaryBtn} onPress={() => saveProfileMutation.mutate()}>
-          <Text style={styles.primaryText}>
-            {saveProfileMutation.isPending ? "Saving..." : "Save Settings"}
-          </Text>
-        </Pressable>
       </GlassCard>
 
       <Pressable style={styles.primaryBtn} onPress={() => nav.navigate("WalletMain")}>

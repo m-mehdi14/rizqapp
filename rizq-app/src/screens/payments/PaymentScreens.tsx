@@ -20,6 +20,7 @@ import {
   claimCommitteePayout,
   createCommitteeContribution,
   fetchCommitteeHistory,
+  fetchSolUsdcRate,
 } from "../../api/rizqApi";
 import { useWeb3AuthWallet } from "../../hooks/useWeb3AuthWallet";
 import { useAppStore } from "../../store/useAppStore";
@@ -72,12 +73,24 @@ export function PayContributionScreen() {
   const nav = useNavigation<NavigationProp<ParamListBase>>();
   const queryClient = useQueryClient();
   const wallet = useAppStore((s) => s.wallet);
+  const solBalance = useAppStore((s) => s.solBalanceLamports) / 1_000_000_000;
   const { committee, routeCommitteeId } = useSelectedCommittee();
   const { signAndSendDevnetProofTx: signWithWeb3Auth } = useWeb3AuthWallet();
+  const walletProvider = useAppStore((s) => s.walletProvider);
+  const solRateQuery = useQuery({
+    queryKey: ["sol-usdc-rate-payments"],
+    queryFn: fetchSolUsdcRate,
+    refetchInterval: 60_000,
+  });
   const amountLamports = committee?.contributionLamports ?? 0;
   const amountUsdc = amountLamports / 1_000_000;
+  const solUsdcRate = solRateQuery.data ?? 0;
+  const amountSolEquivalent = solUsdcRate > 0 ? amountUsdc / solUsdcRate : 0;
   const walletBalanceUsdc = Math.max(0, useAppStore.getState().usdcBalance / 1_000_000);
-  const hasEnoughBalance = walletBalanceUsdc >= amountUsdc;
+  const walletBalanceUsdcEquivalent = solBalance * solUsdcRate;
+  const hasEnoughBalance = walletBalanceUsdc >= amountUsdc || walletBalanceUsdcEquivalent >= amountUsdc;
+  const minFeeSol = 0.00001;
+  const hasEnoughFeeSol = solBalance >= minFeeSol;
   const [txSignature, setTxSignature] = useState("");
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [isSigning, setIsSigning] = useState(false);
@@ -121,7 +134,10 @@ export function PayContributionScreen() {
     >
       <GlassCard style={styles.card}>
         <Info label="Committee" value={committee?.name ?? "No active committee"} />
-        <Info label="Cycle amount" value={`$${amountUsdc.toFixed(2)} USDC`} />
+        <Info
+          label="Cycle amount"
+          value={`$${amountUsdc.toFixed(2)} USDC${amountSolEquivalent > 0 ? ` (~${amountSolEquivalent.toFixed(4)} SOL)` : ""}`}
+        />
         <Info
           label="Due date"
           value={
@@ -134,12 +150,29 @@ export function PayContributionScreen() {
           label="Wallet balance"
           value={`$${walletBalanceUsdc.toFixed(2)} USDC`}
         />
+        <Info
+          label="SOL equivalent"
+          value={solUsdcRate > 0 ? `${walletBalanceUsdcEquivalent.toFixed(2)} USDC` : "Loading..."}
+        />
+        <Info label="Network fee balance" value={`${solBalance.toFixed(5)} SOL`} />
+        <Info
+          label="Wallet status"
+          value={wallet ? `Connected (${walletProvider ?? "wallet"})` : "Not connected"}
+        />
       </GlassCard>
       {!hasEnoughBalance ? (
         <GlassCard style={styles.warningCard}>
           <WarningCircle color={colors.warning} size={18} />
           <Text style={styles.warningBody}>
-            Insufficient wallet balance for this committee payment. Deposit USDC first, then retry.
+            Insufficient balance for this committee payment. Deposit USDC or enough SOL value first, then retry.
+          </Text>
+        </GlassCard>
+      ) : null}
+      {!hasEnoughFeeSol ? (
+        <GlassCard style={styles.warningCard}>
+          <WarningCircle color={colors.warning} size={18} />
+          <Text style={styles.warningBody}>
+            Very low SOL for network fees. Add a small SOL amount to keep signing reliable.
           </Text>
         </GlassCard>
       ) : null}
@@ -179,14 +212,27 @@ export function PayContributionScreen() {
       {submitError ? <Text style={styles.errorText}>{submitError}</Text> : null}
 
       <Pressable
-        style={styles.primaryBtn}
-        disabled={payMutation.isPending || !committee || !wallet || !isSignatureValid || !hasEnoughBalance}
+        style={[
+          styles.primaryBtn,
+          (payMutation.isPending || !committee || !wallet || !isSignatureValid || !hasEnoughBalance || !hasEnoughFeeSol) &&
+            styles.primaryBtnDisabled,
+        ]}
+        disabled={
+          payMutation.isPending ||
+          !committee ||
+          !wallet ||
+          !isSignatureValid ||
+          !hasEnoughBalance ||
+          !hasEnoughFeeSol
+        }
         onPress={() => payMutation.mutate()}
       >
         {payMutation.isPending ? (
           <ActivityIndicator color={colors.textInverse} />
         ) : (
-          <Text style={styles.primaryText}>{`Pay $${amountUsdc.toFixed(2)} USDC`}</Text>
+          <Text style={styles.primaryText}>
+            {`Pay $${amountUsdc.toFixed(2)} USDC${amountSolEquivalent > 0 ? ` / ~${amountSolEquivalent.toFixed(4)} SOL` : ""}`}
+          </Text>
         )}
       </Pressable>
 
@@ -255,8 +301,15 @@ export function OverduePaymentScreen() {
 export function PayoutNotificationScreen() {
   const nav = useNavigation<NavigationProp<ParamListBase>>();
   const { committee, routeCommitteeId } = useSelectedCommittee();
+  const solRateQuery = useQuery({
+    queryKey: ["sol-usdc-rate-payout-notification"],
+    queryFn: fetchSolUsdcRate,
+    refetchInterval: 60_000,
+  });
   const grossUsdc =
     ((committee?.contributionLamports ?? 0) * Math.max(1, committee?.memberCount ?? 1)) / 1_000_000;
+  const grossSolEquivalent =
+    (solRateQuery.data ?? 0) > 0 ? grossUsdc / (solRateQuery.data ?? 1) : 0;
   return (
     <Layout
       title="Payout Available"
@@ -265,7 +318,10 @@ export function PayoutNotificationScreen() {
     >
       <GlassCard style={styles.card}>
         <Info label="Committee" value={committee?.name ?? "No active committee"} />
-        <Info label="Gross pool" value={`$${grossUsdc.toFixed(2)} USDC`} />
+        <Info
+          label="Gross pool"
+          value={`$${grossUsdc.toFixed(2)} USDC${grossSolEquivalent > 0 ? ` (~${grossSolEquivalent.toFixed(4)} SOL)` : ""}`}
+        />
         <Info label="Status" value="Ready to claim" />
       </GlassCard>
       <Pressable
@@ -282,8 +338,14 @@ export function PayoutClaimScreen() {
   const nav = useNavigation<NavigationProp<ParamListBase>>();
   const queryClient = useQueryClient();
   const wallet = useAppStore((s) => s.wallet);
+  const solBalance = useAppStore((s) => s.solBalanceLamports) / 1_000_000_000;
   const { committee, routeCommitteeId } = useSelectedCommittee();
   const { signAndSendDevnetProofTx: signWithWeb3Auth } = useWeb3AuthWallet();
+  const solRateQuery = useQuery({
+    queryKey: ["sol-usdc-rate-payout-claim"],
+    queryFn: fetchSolUsdcRate,
+    refetchInterval: 60_000,
+  });
   const grossLamports =
     (committee?.contributionLamports ?? 0) * Math.max(1, committee?.memberCount ?? 1);
   const feeLamports = Math.round(grossLamports * 0.015);
@@ -291,10 +353,18 @@ export function PayoutClaimScreen() {
   const grossUsdc = grossLamports / 1_000_000;
   const feeUsdc = feeLamports / 1_000_000;
   const netUsdc = netLamports / 1_000_000;
+  const grossSolEquivalent =
+    (solRateQuery.data ?? 0) > 0 ? grossUsdc / (solRateQuery.data ?? 1) : 0;
+  const feeSolEquivalent =
+    (solRateQuery.data ?? 0) > 0 ? feeUsdc / (solRateQuery.data ?? 1) : 0;
+  const netSolEquivalent =
+    (solRateQuery.data ?? 0) > 0 ? netUsdc / (solRateQuery.data ?? 1) : 0;
   const [txSignature, setTxSignature] = useState("");
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [isSigning, setIsSigning] = useState(false);
   const isSignatureValid = useMemo(() => txSignature.trim().length >= 30, [txSignature]);
+  const minFeeSol = 0.00001;
+  const hasEnoughFeeSol = solBalance >= minFeeSol;
 
   const claimMutation = useMutation({
     mutationFn: async () => {
@@ -333,10 +403,28 @@ export function PayoutClaimScreen() {
       variant="celebration"
     >
       <GlassCard style={styles.card}>
-        <Info label="Gross pool" value={`$${grossUsdc.toFixed(2)} USDC`} />
-        <Info label="Platform fee (1.5%)" value={`$${feeUsdc.toFixed(2)} USDC`} />
-        <Info label="Net to wallet" value={`$${netUsdc.toFixed(2)} USDC`} />
+        <Info
+          label="Gross pool"
+          value={`$${grossUsdc.toFixed(2)} USDC${grossSolEquivalent > 0 ? ` (~${grossSolEquivalent.toFixed(4)} SOL)` : ""}`}
+        />
+        <Info
+          label="Platform fee (1.5%)"
+          value={`$${feeUsdc.toFixed(2)} USDC${feeSolEquivalent > 0 ? ` (~${feeSolEquivalent.toFixed(4)} SOL)` : ""}`}
+        />
+        <Info
+          label="Net to wallet"
+          value={`$${netUsdc.toFixed(2)} USDC${netSolEquivalent > 0 ? ` (~${netSolEquivalent.toFixed(4)} SOL)` : ""}`}
+        />
+        <Info label="Network fee balance" value={`${solBalance.toFixed(5)} SOL`} />
       </GlassCard>
+      {!hasEnoughFeeSol ? (
+        <GlassCard style={styles.warningCard}>
+          <WarningCircle color={colors.warning} size={18} />
+          <Text style={styles.warningBody}>
+            Very low SOL for network fees. Add a small SOL amount to keep payout claim reliable.
+          </Text>
+        </GlassCard>
+      ) : null}
       <TextInput
         style={styles.input}
         value={txSignature}
@@ -373,13 +461,15 @@ export function PayoutClaimScreen() {
       {submitError ? <Text style={styles.errorText}>{submitError}</Text> : null}
       <Pressable
         style={styles.primaryBtn}
-        disabled={claimMutation.isPending || !wallet || !committee || !isSignatureValid}
+        disabled={claimMutation.isPending || !wallet || !committee || !isSignatureValid || !hasEnoughFeeSol}
         onPress={() => claimMutation.mutate()}
       >
         {claimMutation.isPending ? (
           <ActivityIndicator color={colors.textInverse} />
         ) : (
-          <Text style={styles.primaryText}>{`Claim $${netUsdc.toFixed(2)} USDC`}</Text>
+          <Text style={styles.primaryText}>
+            {`Claim $${netUsdc.toFixed(2)} USDC${netSolEquivalent > 0 ? ` / ~${netSolEquivalent.toFixed(4)} SOL` : ""}`}
+          </Text>
         )}
       </Pressable>
     </Layout>
@@ -394,12 +484,21 @@ export function PostPayoutScreen() {
     queryFn: () => fetchCommitteeHistory(committee?.id as string),
     enabled: !!committee?.id,
   });
+  const solRateQuery = useQuery({
+    queryKey: ["sol-usdc-rate-post-payout"],
+    queryFn: fetchSolUsdcRate,
+    refetchInterval: 60_000,
+  });
   const latestPayout = historyQuery.data?.payouts?.[0] ?? null;
   const payoutUsdc = latestPayout ? Number(latestPayout.amount_micro_usdc) / 1_000_000 : 0;
+  const payoutSolEquivalent =
+    (solRateQuery.data ?? 0) > 0 ? payoutUsdc / (solRateQuery.data ?? 1) : 0;
   const contributedUsdc = (historyQuery.data?.contributions ?? []).reduce(
     (sum, item) => sum + Number(item.amount_micro_usdc) / 1_000_000,
     0
   );
+  const contributedSolEquivalent =
+    (solRateQuery.data ?? 0) > 0 ? contributedUsdc / (solRateQuery.data ?? 1) : 0;
 
   return (
     <Layout
@@ -415,8 +514,14 @@ export function PostPayoutScreen() {
         </Text>
       </GlassCard>
       <GlassCard style={styles.card}>
-        <Info label="Contributed to date" value={`$${contributedUsdc.toFixed(2)} USDC`} />
-        <Info label="Received today" value={`$${payoutUsdc.toFixed(2)} USDC`} />
+        <Info
+          label="Contributed to date"
+          value={`$${contributedUsdc.toFixed(2)} USDC${contributedSolEquivalent > 0 ? ` (~${contributedSolEquivalent.toFixed(4)} SOL)` : ""}`}
+        />
+        <Info
+          label="Received today"
+          value={`$${payoutUsdc.toFixed(2)} USDC${payoutSolEquivalent > 0 ? ` (~${payoutSolEquivalent.toFixed(4)} SOL)` : ""}`}
+        />
         <Info
           label="Remaining cycles"
           value={String(Math.max(0, (committee?.totalCycles ?? 1) - (committee?.currentCycle ?? 1)))}
@@ -462,6 +567,9 @@ const styles = StyleSheet.create({
     backgroundColor: colors.brandGreen,
     alignItems: "center",
     justifyContent: "center",
+  },
+  primaryBtnDisabled: {
+    opacity: 0.45,
   },
   primaryText: { color: colors.textInverse, fontSize: typography.body, fontWeight: "800" },
   secondaryBtn: {
