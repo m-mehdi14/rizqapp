@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -23,6 +23,7 @@ import { fetchRizqScore, sendAiChatMessage } from "../../api/rizqApi";
 import { useAppStore } from "../../store/useAppStore";
 
 const FLOATING_TAB_BAR_CLEARANCE = 108;
+const CHAT_INPUT_CLEARANCE = 84;
 
 function Layout({
   title,
@@ -120,7 +121,7 @@ export function AiMainScreen() {
 export function AiChatScreen() {
   const userId = useAppStore((s) => s.userId);
   const committees = useAppStore((s) => s.committees);
-  const selectedCommitteeId = committees[0]?.id ?? "";
+  const [selectedCommitteeId, setSelectedCommitteeId] = useState(committees[0]?.id ?? "");
   const [draft, setDraft] = useState("");
   const [messages, setMessages] = useState<
     Array<{ id: string; role: "user" | "ai"; body: string; time: string }>
@@ -133,6 +134,29 @@ export function AiChatScreen() {
     },
   ]);
   const listRef = useRef<FlatList<{ id: string; role: "user" | "ai"; body: string; time: string }>>(null);
+
+  useEffect(() => {
+    if (!selectedCommitteeId && committees[0]?.id) {
+      setSelectedCommitteeId(committees[0].id);
+    }
+  }, [committees, selectedCommitteeId]);
+
+  useEffect(() => {
+    const selectedName =
+      committees.find((committee) => committee.id === selectedCommitteeId)?.name ?? "selected committee";
+    setMessages([
+      {
+        id: `ctx-${selectedCommitteeId || "none"}-${Date.now()}`,
+        role: "ai",
+        body: selectedCommitteeId
+          ? `Context switched to "${selectedName}". Ask anything about this committee.`
+          : "No committee selected yet. Create or join a committee to enable AI context.",
+        time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      },
+    ]);
+    setDraft("");
+    setTimeout(() => listRef.current?.scrollToOffset({ offset: 0, animated: false }), 0);
+  }, [committees, selectedCommitteeId]);
 
   const sendMutation = useMutation({
     mutationFn: async (prompt: string) => {
@@ -176,7 +200,10 @@ export function AiChatScreen() {
   const headerSubtitle = useMemo(() => {
     if (!userId) return "Login required for AI chat.";
     if (!selectedCommitteeId) return "Create/join committee to enable live context.";
-    return "Live context enabled from your first committee.";
+    const selectedName = committees.find((c) => c.id === selectedCommitteeId)?.name;
+    return selectedName
+      ? `Live context enabled for ${selectedName}.`
+      : "Live context enabled for selected committee.";
   }, [selectedCommitteeId, userId]);
 
   const onSend = () => {
@@ -207,6 +234,26 @@ export function AiChatScreen() {
           <View style={styles.chatTopArea}>
             <Text style={styles.title}>AI Chat</Text>
             <Text style={styles.subtitle}>{headerSubtitle}</Text>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.committeeSelector}
+            >
+              {committees.map((committee) => {
+                const isSelected = committee.id === selectedCommitteeId;
+                return (
+                  <Pressable
+                    key={committee.id}
+                    style={[styles.committeeChip, isSelected && styles.committeeChipOn]}
+                    onPress={() => setSelectedCommitteeId(committee.id)}
+                  >
+                    <Text style={[styles.committeeChipText, isSelected && styles.committeeChipTextOn]}>
+                      {committee.name}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
           </View>
 
           <GlassCard style={styles.chatCardLarge}>
@@ -409,6 +456,21 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   chatTopArea: { gap: 6 },
+  committeeSelector: { gap: 8, paddingTop: 2 },
+  committeeChip: {
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.16)",
+    backgroundColor: "rgba(255,255,255,0.04)",
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+  },
+  committeeChipOn: {
+    borderColor: "rgba(0,230,118,0.5)",
+    backgroundColor: "rgba(0,230,118,0.15)",
+  },
+  committeeChipText: { color: colors.textSecondary, fontSize: typography.caption, fontWeight: "600" },
+  committeeChipTextOn: { color: colors.brandGreen },
   chatCardLarge: {
     flex: 1,
     minHeight: 420,
@@ -452,7 +514,13 @@ const styles = StyleSheet.create({
   messageTimeUser: { textAlign: "right" },
   messageTimeAi: { textAlign: "left" },
   typingRow: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 4, paddingBottom: 2 },
-  inputRowPinned: { flexDirection: "row", gap: 8, alignItems: "flex-end", paddingBottom: 4 },
+  inputRowPinned: {
+    flexDirection: "row",
+    gap: 8,
+    alignItems: "flex-end",
+    paddingBottom: 4,
+    marginBottom: CHAT_INPUT_CLEARANCE,
+  },
   chatInput: {
     flex: 1,
     minHeight: 52,

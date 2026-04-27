@@ -211,6 +211,7 @@ export function CommitteeDashboardScreen() {
         ? new Date(activeCommittee.nextCycleDate).toISOString().slice(0, 10)
         : dashboardQuery.data?.committee.next_cycle_date?.slice(0, 10) ?? "-",
       daysRemaining: activeCommittee?.daysLeft ?? 0,
+      solUsdcRate: solRateQuery.data ?? null,
       hasPaidCurrentCycle,
       paidAt,
       poolCurrentUSDC:
@@ -254,6 +255,7 @@ export function CommitteeDashboardScreen() {
       dashboardQuery.data?.committee.next_cycle_date,
       hasPaidCurrentCycle,
       paidAt,
+      solRateQuery.data,
     ]
   );
 

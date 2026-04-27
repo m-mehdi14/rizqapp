@@ -5,6 +5,7 @@ import { colors, radii, typography } from "../../../theme/tokens";
 
 export type ContributionStatusData = {
   nextPaymentAmount: number;
+  solUsdcRate?: number | null;
   nextPaymentDueDate: string;
   daysRemaining: number;
   hasPaidCurrentCycle: boolean;
@@ -17,10 +18,17 @@ type Props = {
 };
 
 export function ContributionStatus({ committee, onPayNow }: Props) {
+  const solEquivalent =
+    committee.solUsdcRate && committee.solUsdcRate > 0
+      ? committee.nextPaymentAmount / committee.solUsdcRate
+      : 0;
   return (
     <GlassCard style={styles.card}>
       <Text style={styles.heading}>My Contribution Status</Text>
       <Text style={styles.amount}>{`$${committee.nextPaymentAmount.toFixed(2)} USDC`}</Text>
+      {solEquivalent > 0 ? (
+        <Text style={styles.amountSub}>{`~${solEquivalent.toFixed(4)} SOL`}</Text>
+      ) : null}
       <Text style={styles.meta}>{`Due ${committee.nextPaymentDueDate} • ${committee.daysRemaining} days left`}</Text>
 
       {!committee.hasPaidCurrentCycle ? (
@@ -41,6 +49,7 @@ const styles = StyleSheet.create({
   card: { padding: 14, gap: 6 },
   heading: { color: colors.textSecondary, fontSize: typography.caption, textTransform: "uppercase", letterSpacing: 0.8, fontWeight: "700" },
   amount: { color: colors.brandGreen, fontSize: 30, fontWeight: "800" },
+  amountSub: { color: colors.textSecondary, fontSize: typography.bodySmall, fontWeight: "700" },
   meta: { color: colors.textPrimary, fontSize: typography.bodySmall },
   button: {
     marginTop: 8,

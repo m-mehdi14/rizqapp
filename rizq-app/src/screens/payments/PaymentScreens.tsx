@@ -75,7 +75,7 @@ export function PayContributionScreen() {
   const wallet = useAppStore((s) => s.wallet);
   const solBalance = useAppStore((s) => s.solBalanceLamports) / 1_000_000_000;
   const { committee, routeCommitteeId } = useSelectedCommittee();
-  const { signAndSendDevnetProofTx: signWithWeb3Auth } = useWeb3AuthWallet();
+  const { signAndSendDevnetProofTx: signWithWeb3Auth, connectWeb3AuthWallet } = useWeb3AuthWallet();
   const walletProvider = useAppStore((s) => s.walletProvider);
   const solRateQuery = useQuery({
     queryKey: ["sol-usdc-rate-payments"],
@@ -86,7 +86,7 @@ export function PayContributionScreen() {
   const amountUsdc = amountLamports / 1_000_000;
   const solUsdcRate = solRateQuery.data ?? 0;
   const amountSolEquivalent = solUsdcRate > 0 ? amountUsdc / solUsdcRate : 0;
-  const walletBalanceUsdc = Math.max(0, useAppStore.getState().usdcBalance / 1_000_000);
+  const walletBalanceUsdc = Math.max(0, useAppStore((s) => s.usdcBalance) / 1_000_000);
   const walletBalanceUsdcEquivalent = solBalance * solUsdcRate;
   const hasEnoughBalance = walletBalanceUsdc >= amountUsdc || walletBalanceUsdcEquivalent >= amountUsdc;
   const minFeeSol = 0.00001;
@@ -157,7 +157,13 @@ export function PayContributionScreen() {
         <Info label="Network fee balance" value={`${solBalance.toFixed(5)} SOL`} />
         <Info
           label="Wallet status"
-          value={wallet ? `Connected (${walletProvider ?? "wallet"})` : "Not connected"}
+          value={
+            wallet
+              ? `Connected (${walletProvider ?? "wallet"})`
+              : walletProvider === "embedded"
+                ? "Embedded wallet session expired"
+                : "Not connected"
+          }
         />
       </GlassCard>
       {!hasEnoughBalance ? (
@@ -189,14 +195,18 @@ export function PayContributionScreen() {
         style={[styles.secondaryBtn, isSigning && { opacity: 0.7 }]}
         disabled={isSigning}
         onPress={async () => {
-          if (!wallet) {
-            setSubmitError("Connect wallet first");
-            return;
-          }
           try {
             setIsSigning(true);
             setSubmitError(null);
-            const signature = await signWithWeb3Auth(wallet);
+            let signingWallet = wallet;
+            if (!signingWallet && walletProvider === "embedded") {
+              signingWallet = await connectWeb3AuthWallet();
+            }
+            if (!signingWallet) {
+              setSubmitError("Connect wallet first");
+              return;
+            }
+            const signature = await signWithWeb3Auth(signingWallet);
             setTxSignature(signature);
           } catch (error) {
             setSubmitError(
@@ -210,6 +220,9 @@ export function PayContributionScreen() {
         <Text style={styles.secondaryText}>{isSigning ? "Signing..." : "Sign in in-app wallet"}</Text>
       </Pressable>
       {submitError ? <Text style={styles.errorText}>{submitError}</Text> : null}
+      {!isSignatureValid ? (
+        <Text style={styles.hintText}>Sign with wallet first, then payment button will activate.</Text>
+      ) : null}
 
       <Pressable
         style={[
@@ -340,7 +353,8 @@ export function PayoutClaimScreen() {
   const wallet = useAppStore((s) => s.wallet);
   const solBalance = useAppStore((s) => s.solBalanceLamports) / 1_000_000_000;
   const { committee, routeCommitteeId } = useSelectedCommittee();
-  const { signAndSendDevnetProofTx: signWithWeb3Auth } = useWeb3AuthWallet();
+  const { signAndSendDevnetProofTx: signWithWeb3Auth, connectWeb3AuthWallet } = useWeb3AuthWallet();
+  const walletProvider = useAppStore((s) => s.walletProvider);
   const solRateQuery = useQuery({
     queryKey: ["sol-usdc-rate-payout-claim"],
     queryFn: fetchSolUsdcRate,
@@ -438,14 +452,18 @@ export function PayoutClaimScreen() {
         style={[styles.secondaryBtn, isSigning && { opacity: 0.7 }]}
         disabled={isSigning}
         onPress={async () => {
-          if (!wallet) {
-            setSubmitError("Connect wallet first");
-            return;
-          }
           try {
             setIsSigning(true);
             setSubmitError(null);
-            const signature = await signWithWeb3Auth(wallet);
+            let signingWallet = wallet;
+            if (!signingWallet && walletProvider === "embedded") {
+              signingWallet = await connectWeb3AuthWallet();
+            }
+            if (!signingWallet) {
+              setSubmitError("Connect wallet first");
+              return;
+            }
+            const signature = await signWithWeb3Auth(signingWallet);
             setTxSignature(signature);
           } catch (error) {
             setSubmitError(
@@ -459,6 +477,9 @@ export function PayoutClaimScreen() {
         <Text style={styles.secondaryText}>{isSigning ? "Signing..." : "Sign in in-app wallet"}</Text>
       </Pressable>
       {submitError ? <Text style={styles.errorText}>{submitError}</Text> : null}
+      {!isSignatureValid ? (
+        <Text style={styles.hintText}>Sign with wallet first, then claim button will activate.</Text>
+      ) : null}
       <Pressable
         style={styles.primaryBtn}
         disabled={claimMutation.isPending || !wallet || !committee || !isSignatureValid || !hasEnoughFeeSol}
@@ -561,6 +582,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
   },
   errorText: { color: colors.danger, fontSize: typography.caption },
+  hintText: { color: colors.textSecondary, fontSize: typography.caption },
   primaryBtn: {
     minHeight: 48,
     borderRadius: radii.button,

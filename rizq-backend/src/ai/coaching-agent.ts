@@ -11,7 +11,7 @@ export type CommitteeCoachingContext = {
   pkrRate: number;
 };
 
-const FALLBACK_MODEL = "gemini-1.5-flash";
+const FALLBACK_MODEL = "gemini-2.5-flash";
 
 export function buildSystemPrompt(ctx: CommitteeCoachingContext): string {
   const daysLeft = Math.max(
@@ -48,6 +48,8 @@ Rules:
 5. If payment is overdue, say it clearly and suggest immediate next step.
 6. Never give investment advice; stay on budgeting and timely contribution.
 7. End with an encouraging one-liner in either English or Urdu.
+8. Use only the context provided above. If a fact is missing, say it is not available yet.
+9. Never invent amounts, dates, balances, committee names, or payment status.
 `.trim();
 }
 
@@ -79,7 +81,8 @@ export async function generateCoaching(
           },
         ],
         generationConfig: {
-          temperature: 0.7,
+          temperature: 0.35,
+          topP: 0.9,
           maxOutputTokens: 220,
         },
       }),
@@ -92,7 +95,10 @@ export async function generateCoaching(
   const payload = (await response.json()) as {
     candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
   };
-  const text = payload.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+  const text = (payload.candidates?.[0]?.content?.parts ?? [])
+    .map((part) => part.text ?? "")
+    .join("\n")
+    .trim();
   if (!text) {
     throw new Error("Unexpected Gemini response shape");
   }
