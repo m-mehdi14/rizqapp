@@ -19,7 +19,12 @@ import { GlassCard } from "../../components/GlassCard";
 import { ScreenShell } from "../../components/ScreenShell";
 import { colors, radii, spacing, typography } from "../../theme/tokens";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { fetchRizqScore, sendAiChatMessage } from "../../api/rizqApi";
+import {
+  fetchAiChatHistory,
+  fetchRizqScore,
+  sendAiChatMessage,
+  sendGeneralAiChatMessage,
+} from "../../api/rizqApi";
 import { useAppStore } from "../../store/useAppStore";
 
 const FLOATING_TAB_BAR_CLEARANCE = 108;
@@ -119,9 +124,12 @@ export function AiMainScreen() {
 }
 
 export function AiChatScreen() {
+  const GENERAL_CHAT_ID = "__general__";
   const userId = useAppStore((s) => s.userId);
   const committees = useAppStore((s) => s.committees);
-  const [selectedCommitteeId, setSelectedCommitteeId] = useState(committees[0]?.id ?? "");
+  const [selectedCommitteeId, setSelectedCommitteeId] = useState<string>(
+    committees[0]?.id ?? GENERAL_CHAT_ID
+  );
   const [draft, setDraft] = useState("");
   const [messages, setMessages] = useState<
     Array<{ id: string; role: "user" | "ai"; body: string; time: string }>
@@ -136,32 +144,94 @@ export function AiChatScreen() {
   const listRef = useRef<FlatList<{ id: string; role: "user" | "ai"; body: string; time: string }>>(null);
 
   useEffect(() => {
-    if (!selectedCommitteeId && committees[0]?.id) {
+    if (
+      selectedCommitteeId !== GENERAL_CHAT_ID &&
+      !committees.some((committee) => committee.id === selectedCommitteeId)
+    ) {
+      setSelectedCommitteeId(committees[0]?.id ?? GENERAL_CHAT_ID);
+    } else if (!selectedCommitteeId && committees[0]?.id) {
       setSelectedCommitteeId(committees[0].id);
     }
-  }, [committees, selectedCommitteeId]);
+  }, [committees, selectedCommitteeId, GENERAL_CHAT_ID]);
 
   useEffect(() => {
-    const selectedName =
-      committees.find((committee) => committee.id === selectedCommitteeId)?.name ?? "selected committee";
-    setMessages([
-      {
-        id: `ctx-${selectedCommitteeId || "none"}-${Date.now()}`,
-        role: "ai",
-        body: selectedCommitteeId
-          ? `Context switched to "${selectedName}". Ask anything about this committee.`
-          : "No committee selected yet. Create or join a committee to enable AI context.",
-        time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-      },
-    ]);
-    setDraft("");
-    setTimeout(() => listRef.current?.scrollToOffset({ offset: 0, animated: false }), 0);
-  }, [committees, selectedCommitteeId]);
+    let cancelled = false;
+    const loadHistory = async () => {
+      if (!userId) {
+        setMessages([
+          {
+            id: `ctx-auth-${Date.now()}`,
+            role: "ai",
+            body: "Login required to use AI chat.",
+            time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+          },
+        ]);
+        return;
+      }
+      const isGeneral = selectedCommitteeId === GENERAL_CHAT_ID;
+      const selectedName =
+        committees.find((committee) => committee.id === selectedCommitteeId)?.name ??
+        "selected committee";
+      try {
+        const rows = await fetchAiChatHistory({
+          userId,
+          committeeId: isGeneral ? null : selectedCommitteeId,
+        });
+        if (cancelled) return;
+        if (rows.length > 0) {
+          setMessages(
+            rows.map((row) => ({
+              id: row.id,
+              role: row.role,
+              body: row.message,
+              time: new Date(row.created_at).toLocaleTimeString([], {
+                hour: "2-digit",
+                minute: "2-digit",
+              }),
+            }))
+          );
+        } else {
+          setMessages([
+            {
+              id: `ctx-${selectedCommitteeId || "none"}-${Date.now()}`,
+              role: "ai",
+              body: isGeneral
+                ? "General AI mode active. Ask anything."
+                : `Context switched to "${selectedName}". Ask anything about this committee.`,
+              time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+            },
+          ]);
+        }
+        setDraft("");
+        setTimeout(() => listRef.current?.scrollToEnd({ animated: false }), 0);
+      } catch {
+        if (cancelled) return;
+        setMessages([
+          {
+            id: `ctx-err-${Date.now()}`,
+            role: "ai",
+            body: "Unable to load previous conversation. You can continue chatting.",
+            time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+          },
+        ]);
+      }
+    };
+    loadHistory();
+    return () => {
+      cancelled = true;
+    };
+  }, [committees, selectedCommitteeId, userId, GENERAL_CHAT_ID]);
 
   const sendMutation = useMutation({
     mutationFn: async (prompt: string) => {
       if (!selectedCommitteeId || !userId) {
-        throw new Error("Join or create a committee first to start AI chat.");
+        throw new Error("Login first to start AI chat.");
+      }
+      if (selectedCommitteeId === GENERAL_CHAT_ID) {
+        return await sendGeneralAiChatMessage({
+          userId,
+          prompt,
+        });
       }
       return await sendAiChatMessage({
         committeeId: selectedCommitteeId,
@@ -199,12 +269,13 @@ export function AiChatScreen() {
   const canSend = draft.trim().length > 0 && !sendMutation.isPending;
   const headerSubtitle = useMemo(() => {
     if (!userId) return "Login required for AI chat.";
+    if (selectedCommitteeId === GENERAL_CHAT_ID) return "General AI mode (no committee rules).";
     if (!selectedCommitteeId) return "Create/join committee to enable live context.";
     const selectedName = committees.find((c) => c.id === selectedCommitteeId)?.name;
     return selectedName
       ? `Live context enabled for ${selectedName}.`
       : "Live context enabled for selected committee.";
-  }, [selectedCommitteeId, userId]);
+  }, [selectedCommitteeId, userId, committees, GENERAL_CHAT_ID]);
 
   const onSend = () => {
     const prompt = draft.trim();
@@ -239,6 +310,23 @@ export function AiChatScreen() {
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={styles.committeeSelector}
             >
+              <Pressable
+                key={GENERAL_CHAT_ID}
+                style={[
+                  styles.committeeChip,
+                  selectedCommitteeId === GENERAL_CHAT_ID && styles.committeeChipOn,
+                ]}
+                onPress={() => setSelectedCommitteeId(GENERAL_CHAT_ID)}
+              >
+                <Text
+                  style={[
+                    styles.committeeChipText,
+                    selectedCommitteeId === GENERAL_CHAT_ID && styles.committeeChipTextOn,
+                  ]}
+                >
+                  General AI
+                </Text>
+              </Pressable>
               {committees.map((committee) => {
                 const isSelected = committee.id === selectedCommitteeId;
                 return (
@@ -260,7 +348,11 @@ export function AiChatScreen() {
             <View style={styles.chatHeader}>
               <Text style={styles.chatHeaderTitle}>Rizq Assistant</Text>
               <Text style={styles.chatHeaderMeta}>
-                {selectedCommitteeId ? "Connected to committee data" : "No committee connected"}
+                {selectedCommitteeId === GENERAL_CHAT_ID
+                  ? "General AI assistant mode"
+                  : selectedCommitteeId
+                    ? "Connected to committee data"
+                    : "No committee connected"}
               </Text>
             </View>
 

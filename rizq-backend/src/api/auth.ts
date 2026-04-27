@@ -263,6 +263,33 @@ authRouter.post("/session/nominee", async (req, res) => {
   }
 });
 
+authRouter.get("/session/nominee", async (req, res) => {
+  try {
+    await ensureAuthTables();
+    const prisma = getPrisma();
+    const token = readBearerToken(req.headers.authorization);
+    if (!token) return res.status(401).json({ error: "missing token" });
+    const claims = verifyAuthToken(token);
+
+    const nominee = await prisma.nominee.findFirst({
+      where: { user_id: claims.sub, is_primary: true },
+      orderBy: { created_at: "desc" },
+      select: {
+        id: true,
+        full_name: true,
+        phone_number: true,
+        cnic_number: true,
+        relationship: true,
+      },
+    });
+
+    return res.json({ ok: true, nominee });
+  } catch (e) {
+    console.error(e);
+    return res.status(500).json({ error: "server error" });
+  }
+});
+
 authRouter.post("/register", async (req, res) => {
   try {
     await ensureAuthTables();

@@ -45,6 +45,24 @@ export function CreateKametiWizardScreen() {
     WIZARD_FOOTER_HEIGHT + FLOATING_TAB_BAR_CLEARANCE + insets.bottom + 28;
   const launchMutation = useMutation({
     mutationFn: async () => {
+      const payoutOrderType =
+        draft.payoutOrder === "Random lottery (Solana VRF)"
+          ? "random"
+          : draft.payoutOrder === "First joined = first paid"
+            ? "first_joined"
+            : "manager";
+      const latePenaltyAction =
+        draft.missedPaymentAction === "Remove member"
+          ? "remove"
+          : draft.missedPaymentAction === "Suspend payout turn"
+            ? "suspend"
+            : "warning";
+      const penaltyDestination =
+        draft.penaltyDestination === "Redistribute to members"
+          ? "redistribute"
+          : draft.penaltyDestination === "Rizq Welfare Pool"
+            ? "welfare"
+            : "none";
       const amountPerMember = Number(draft.amountPerMember || 0);
       if (amountPerMember < 5) throw new Error("Minimum contribution is 5 USDC");
       const result = await createCommittee({
@@ -57,10 +75,11 @@ export function CreateKametiWizardScreen() {
         frequency: draft.paymentFrequency,
         maxMembers: draft.maxMembers,
         totalCycles: draft.maxMembers,
-        payoutOrderType: draft.payoutOrder,
+        payoutOrderType,
+        payoutOrderLocked: !draft.managerCanChangeOrder,
         gracePeriodDays: Number(draft.gracePeriod.split(" ")[0] ?? 3),
-        latePenaltyAction: draft.missedPaymentAction,
-        penaltyGoesTo: draft.penaltyDestination,
+        latePenaltyAction,
+        penaltyGoesTo: penaltyDestination,
         welfareOptInPct: draft.welfareOptIn ? 1 : 0,
         kycRequired: draft.kycRequired,
         nomineeRequired: draft.nomineeRequired,

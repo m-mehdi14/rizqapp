@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { randomUUID } from "crypto";
-import { generateCoaching } from "../ai/coaching-agent";
+import { generateCoaching, generateGeneralChat } from "../ai/coaching-agent";
 import { getPrisma } from "../db/client";
 import { fetchCommitteeCoachingContext } from "../solana/goal-reader";
 
@@ -38,6 +38,83 @@ async function getCommitteeAndUserContext(committeeId: string, userId: string) {
   };
 }
 
+async function ensureAiChatTable() {
+  if (ensuredAiChatTable) return;
+  const prisma = getPrisma();
+    await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS ai_chat_messages (
+      id UUID PRIMARY KEY,
+      user_id UUID NOT NULL,
+      committee_id UUID NULL,
+      role TEXT NOT NULL,
+      message TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  try {
+    await prisma.$executeRawUnsafe(`
+      ALTER TABLE ai_chat_messages
+      ALTER COLUMN committee_id DROP NOT NULL
+    `);
+  } catch {
+    // Some DBs may already have committee_id nullable or not support this on current shape.
+  }
+  await prisma.$executeRawUnsafe(`
+    CREATE INDEX IF NOT EXISTS idx_ai_chat_messages_user_committee_created
+    ON ai_chat_messages (user_id, committee_id, created_at DESC)
+  `);
+  ensuredAiChatTable = true;
+}
+
+async function saveChatPair(input: {
+  userId: string;
+  committeeId?: string | null;
+  userMessage: string;
+  aiMessage: string;
+}) {
+  const prisma = getPrisma();
+  await ensureAiChatTable();
+  await prisma.$executeRawUnsafe(
+    `
+      INSERT INTO ai_chat_messages (id, user_id, committee_id, role, message)
+      VALUES ($1::uuid, $2::uuid, $3::uuid, 'user', $4),
+             ($5::uuid, $2::uuid, $3::uuid, 'ai', $6)
+    `,
+    randomUUID(),
+    input.userId,
+    input.committeeId ?? null,
+    input.userMessage,
+    randomUUID(),
+    input.aiMessage
+  );
+}
+
+async function loadChatHistory(input: {
+  userId: string;
+  committeeId?: string | null;
+  limit?: number;
+}) {
+  const prisma = getPrisma();
+  await ensureAiChatTable();
+  const rows = (await prisma.$queryRawUnsafe(
+    `
+      SELECT id, role, message, created_at
+      FROM ai_chat_messages
+      WHERE user_id = $1::uuid
+        AND (
+          ($2::uuid IS NULL AND committee_id IS NULL)
+          OR committee_id = $2::uuid
+        )
+      ORDER BY created_at DESC
+      LIMIT $3
+    `,
+    input.userId,
+    input.committeeId ?? null,
+    Math.max(1, Math.min(100, input.limit ?? 30))
+  )) as Array<{ id: string; role: string; message: string; created_at: Date }>;
+  return rows.reverse();
+}
+
 aiRouter.post("/chat", async (req, res) => {
   try {
     const { committee_id, user_id, prompt } = req.body ?? {};
@@ -45,7 +122,6 @@ aiRouter.post("/chat", async (req, res) => {
       return res.status(400).json({ error: "committee_id and user_id are required" });
     }
 
-    const prisma = getPrisma();
     const { committee, user } = await getCommitteeAndUserContext(
       String(committee_id),
       String(user_id)
@@ -89,34 +165,79 @@ aiRouter.post("/chat", async (req, res) => {
         ? prompt.trim()
         : "Mera next payment plan banao.";
 
-    if (!ensuredAiChatTable) {
-      await prisma.$executeRawUnsafe(`
-        CREATE TABLE IF NOT EXISTS ai_chat_messages (
-          id UUID PRIMARY KEY,
-          user_id UUID NOT NULL,
-          committee_id UUID NOT NULL,
-          role TEXT NOT NULL,
-          message TEXT NOT NULL,
-          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-        )
-      `);
-      ensuredAiChatTable = true;
-    }
-    await prisma.$executeRawUnsafe(
-      `
-        INSERT INTO ai_chat_messages (id, user_id, committee_id, role, message)
-        VALUES ($1::uuid, $2::uuid, $3::uuid, 'user', $4),
-               ($5::uuid, $2::uuid, $3::uuid, 'ai', $6)
-      `,
-      randomUUID(),
-      String(user_id),
-      String(committee_id),
-      normalizedPrompt,
-      randomUUID(),
-      message
-    );
+    await saveChatPair({
+      userId: String(user_id),
+      committeeId: String(committee_id),
+      userMessage: normalizedPrompt,
+      aiMessage: message,
+    });
 
     return res.json({ message });
+  } catch (e) {
+    console.error(e);
+    return res.status(500).json({ error: "server error" });
+  }
+});
+
+aiRouter.post("/chat/general", async (req, res) => {
+  try {
+    const { user_id, prompt } = req.body ?? {};
+    if (!user_id) {
+      return res.status(400).json({ error: "user_id is required" });
+    }
+    const normalizedPrompt =
+      typeof prompt === "string" && prompt.trim().length > 0
+        ? prompt.trim()
+        : "Give me practical financial guidance for this week.";
+    const historyRows = await loadChatHistory({
+      userId: String(user_id),
+      committeeId: null,
+      limit: 14,
+    });
+    const message = await generateGeneralChat(
+      normalizedPrompt,
+      historyRows.map((row) => ({
+        role: row.role === "user" ? "user" : "ai",
+        message: row.message,
+      }))
+    );
+    await saveChatPair({
+      userId: String(user_id),
+      committeeId: null,
+      userMessage: normalizedPrompt,
+      aiMessage: message,
+    });
+    return res.json({ message });
+  } catch (e) {
+    console.error(e);
+    return res.status(500).json({ error: "server error" });
+  }
+});
+
+aiRouter.get("/chat/history", async (req, res) => {
+  try {
+    const userId =
+      typeof req.query.user_id === "string" && req.query.user_id.trim().length > 0
+        ? req.query.user_id.trim()
+        : null;
+    if (!userId) return res.status(400).json({ error: "user_id is required" });
+    const committeeId =
+      typeof req.query.committee_id === "string" && req.query.committee_id.trim().length > 0
+        ? req.query.committee_id.trim()
+        : null;
+    const rows = await loadChatHistory({
+      userId,
+      committeeId,
+      limit: 60,
+    });
+    return res.json(
+      rows.map((row) => ({
+        id: row.id,
+        role: row.role === "user" ? "user" : "ai",
+        message: row.message,
+        created_at: row.created_at.toISOString(),
+      }))
+    );
   } catch (e) {
     console.error(e);
     return res.status(500).json({ error: "server error" });

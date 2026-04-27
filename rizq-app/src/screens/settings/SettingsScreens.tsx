@@ -7,6 +7,8 @@ import { ScreenShell } from "../../components/ScreenShell";
 import { useAppStore } from "../../store/useAppStore";
 import { colors, radii, spacing, typography } from "../../theme/tokens";
 import { usePushNotifications } from "../../hooks/usePushNotifications";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { fetchSessionNominee, saveSessionNominee } from "../../api/rizqApi";
 
 const FLOATING_TAB_BAR_CLEARANCE = 108;
 
@@ -110,16 +112,55 @@ export function SettingsKycStatusScreen() {
 }
 
 export function SettingsNomineeScreen() {
+  const authToken = useAppStore((s) => s.authToken);
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
+  const [cnic, setCnic] = useState("");
   const [relation, setRelation] = useState("");
+  const [status, setStatus] = useState<string | null>(null);
+  useQuery({
+    queryKey: ["session-nominee", authToken],
+    enabled: Boolean(authToken),
+    queryFn: async () => {
+      const nominee = await fetchSessionNominee({ token: authToken as string });
+      if (!nominee) return null;
+      setName(nominee.full_name);
+      setPhone(nominee.phone_number);
+      setCnic(nominee.cnic_number);
+      setRelation(nominee.relationship);
+      return nominee;
+    },
+  });
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      if (!authToken) throw new Error("Please sign in first");
+      if (!name.trim() || !phone.trim() || !cnic.trim() || !relation.trim()) {
+        throw new Error("Please complete all nominee fields");
+      }
+      return await saveSessionNominee({
+        token: authToken,
+        fullName: name.trim(),
+        phoneNumber: phone.trim(),
+        cnicNumber: cnic.trim(),
+        relationship: relation.trim(),
+      });
+    },
+    onSuccess: () => {
+      setStatus("Nominee saved");
+    },
+    onError: (error) => {
+      setStatus(error instanceof Error ? error.message : "Failed to save nominee");
+    },
+  });
   return (
     <SettingsLayout title="Nominee" subtitle="Your nominee can claim funds in edge-case scenarios.">
       <GlassCard style={styles.card}>
         <TextInput value={name} onChangeText={setName} placeholder="Nominee full name" placeholderTextColor={colors.textMuted} style={styles.input} />
         <TextInput value={phone} onChangeText={setPhone} placeholder="+92..." placeholderTextColor={colors.textMuted} style={styles.input} />
+        <TextInput value={cnic} onChangeText={setCnic} placeholder="CNIC number" placeholderTextColor={colors.textMuted} style={styles.input} />
         <TextInput value={relation} onChangeText={setRelation} placeholder="Relationship" placeholderTextColor={colors.textMuted} style={styles.input} />
-        <Pressable style={styles.primaryBtn}>
+        {status ? <Text style={styles.rowHelper}>{status}</Text> : null}
+        <Pressable style={styles.primaryBtn} onPress={() => saveMutation.mutate()}>
           <Text style={styles.primaryText}>Save nominee</Text>
         </Pressable>
       </GlassCard>

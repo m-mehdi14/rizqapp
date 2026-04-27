@@ -57,6 +57,12 @@ export type RizqScorePayload = {
 export type AiChatPayload = {
   message: string;
 };
+export type AiChatHistoryRow = {
+  id: string;
+  role: "user" | "ai";
+  message: string;
+  created_at: string;
+};
 
 export type RegisteredUser = {
   id: string;
@@ -96,6 +102,7 @@ export type CreateCommitteeInput = {
   maxMembers: number;
   totalCycles: number;
   payoutOrderType: string;
+  payoutOrderLocked?: boolean;
   gracePeriodDays: number;
   latePenaltyAction: string;
   penaltyGoesTo: string;
@@ -451,6 +458,16 @@ export async function saveSessionNominee(input: {
   return payload.nominee;
 }
 
+export async function fetchSessionNominee(input: {
+  token: string;
+}): Promise<SessionNominee | null> {
+  const payload = await authHttp<{ ok: true; nominee: SessionNominee | null }>(
+    "/api/auth/session/nominee",
+    input.token
+  );
+  return payload.nominee;
+}
+
 export async function updateSessionKycStatus(input: {
   token: string;
   kycStatus: "unverified" | "pending" | "verified";
@@ -510,6 +527,7 @@ export async function createCommittee(input: CreateCommitteeInput): Promise<{
     max_members: input.maxMembers,
     total_cycles: input.totalCycles,
     payout_order_type: input.payoutOrderType,
+    payout_order_locked: Boolean(input.payoutOrderLocked ?? false),
     grace_period_days: input.gracePeriodDays,
     late_penalty_action: input.latePenaltyAction,
     penalty_goes_to: input.penaltyGoesTo,
@@ -677,6 +695,32 @@ export async function sendAiChatMessage(input: {
       prompt: input.prompt,
     }),
   });
+}
+
+export async function sendGeneralAiChatMessage(input: {
+  userId: string;
+  prompt: string;
+}): Promise<AiChatPayload> {
+  return await http<AiChatPayload>("/api/ai/chat/general", {
+    method: "POST",
+    body: JSON.stringify({
+      user_id: input.userId,
+      prompt: input.prompt,
+    }),
+  });
+}
+
+export async function fetchAiChatHistory(input: {
+  userId: string;
+  committeeId?: string | null;
+}): Promise<AiChatHistoryRow[]> {
+  const committeeQuery =
+    input.committeeId && input.committeeId.trim().length > 0
+      ? `&committee_id=${encodeURIComponent(input.committeeId)}`
+      : "";
+  return await http<AiChatHistoryRow[]>(
+    `/api/ai/chat/history?user_id=${encodeURIComponent(input.userId)}${committeeQuery}`
+  );
 }
 
 export async function fetchPkrRate(): Promise<number> {

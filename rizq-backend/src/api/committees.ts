@@ -207,6 +207,15 @@ function mapFrequencyToDays(frequency: string | undefined): number {
   return 30;
 }
 
+function shuffleInPlace<T>(list: T[]): T[] {
+  const copy = [...list];
+  for (let i = copy.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [copy[i], copy[j]] = [copy[j], copy[i]];
+  }
+  return copy;
+}
+
 async function allocateInviteCode(prisma: ReturnType<typeof getPrisma>): Promise<string> {
   for (let i = 0; i < 8; i += 1) {
     const candidate = makeInviteCode();
@@ -265,6 +274,7 @@ committeesRouter.post("/", async (req, res) => {
       max_members,
       total_cycles,
       payout_order_type,
+      payout_order_locked,
       grace_period_days,
       late_penalty_action,
       penalty_goes_to,
@@ -348,8 +358,9 @@ committeesRouter.post("/", async (req, res) => {
           current_cycle: 1,
           payout_order_type:
             typeof payout_order_type === "string" && payout_order_type.trim().length > 0
-              ? payout_order_type.trim()
+              ? payout_order_type.trim().toLowerCase()
               : "manager",
+          payout_order_locked: Boolean(payout_order_locked ?? false),
           grace_period_days: Math.max(1, Number(grace_period_days ?? 3)),
           late_penalty_action:
             typeof late_penalty_action === "string" && late_penalty_action.trim().length > 0
@@ -567,6 +578,7 @@ committeesRouter.post("/:id/join", async (req, res) => {
         current_members: true,
         kyc_required: true,
         nominee_required: true,
+        payout_order_type: true,
         status: true,
       },
     });
@@ -625,6 +637,26 @@ committeesRouter.post("/:id/join", async (req, res) => {
         where: { id: committee.id },
         data: { current_members: { increment: 1 } },
       });
+
+      if (committee.payout_order_type === "random") {
+        const allMembers = await tx.committeeMember.findMany({
+          where: { committee_id: committee.id, status: { in: ["active", "suspended"] } },
+          orderBy: { joined_at: "asc" },
+          select: { id: true },
+        });
+        const shuffled = shuffleInPlace(allMembers);
+        await tx.committeeMember.updateMany({
+          where: { committee_id: committee.id },
+          data: { payout_position: null },
+        });
+        for (let i = 0; i < shuffled.length; i += 1) {
+          await tx.committeeMember.update({
+            where: { id: shuffled[i].id },
+            data: { payout_position: i + 1 },
+          });
+        }
+      }
+
       return member;
     });
 
@@ -931,6 +963,14 @@ committeesRouter.post("/:id/payout-order", async (req, res) => {
     }
 
     const prisma = getPrisma();
+    const committeeMeta = await prisma.committee.findUnique({
+      where: { id: committeeId },
+      select: { payout_order_locked: true },
+    });
+    if (!committeeMeta) return res.status(404).json({ error: "committee not found" });
+    if (committeeMeta.payout_order_locked) {
+      return res.status(400).json({ error: "payout order is locked for this committee" });
+    }
     await prisma.$transaction(async (tx) => {
       const rows = await tx.committeeMember.findMany({
         where: { committee_id: committeeId, status: { in: ["active", "suspended"] } },
@@ -1048,6 +1088,14 @@ committeesRouter.post("/:id/order-change-requests", async (req, res) => {
     }
 
     const prisma = getPrisma();
+    const committeeMeta = await prisma.committee.findUnique({
+      where: { id: committeeId },
+      select: { payout_order_locked: true },
+    });
+    if (!committeeMeta) return res.status(404).json({ error: "committee not found" });
+    if (committeeMeta.payout_order_locked) {
+      return res.status(400).json({ error: "payout order is locked for this committee" });
+    }
     const rows = await prisma.committeeMember.findMany({
       where: { committee_id: committeeId, status: { in: ["active", "suspended"] } },
       orderBy: [{ payout_position: "asc" }, { joined_at: "asc" }],
