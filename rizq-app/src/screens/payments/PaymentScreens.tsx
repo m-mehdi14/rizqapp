@@ -270,13 +270,24 @@ export function OverduePaymentScreen() {
 export function PayoutNotificationScreen() {
   const nav = useNavigation<NavigationProp<ParamListBase>>();
   const { committee, routeCommitteeId } = useSelectedCommittee();
+  const historyQuery = useQuery({
+    queryKey: ["committee-history", committee?.id],
+    queryFn: () => fetchCommitteeHistory(committee?.id as string),
+    enabled: !!committee?.id,
+  });
   const solRateQuery = useQuery({
     queryKey: ["sol-usdc-rate-payout-notification"],
     queryFn: fetchSolUsdcRate,
     refetchInterval: 60_000,
   });
+  const cycleContributionMicroUsdc = (historyQuery.data?.contributions ?? [])
+    .filter((item) => (item.cycle_number ?? 0) === (committee?.currentCycle ?? 0))
+    .reduce((sum, item) => sum + Number(item.amount_micro_usdc ?? 0), 0);
+  const fallbackCycleGrossMicroUsdc =
+    (committee?.contributionLamports ?? 0) * Math.max(1, committee?.memberCount ?? 1);
   const grossUsdc =
-    ((committee?.contributionLamports ?? 0) * Math.max(1, committee?.memberCount ?? 1)) / 1_000_000;
+    (cycleContributionMicroUsdc > 0 ? cycleContributionMicroUsdc : fallbackCycleGrossMicroUsdc) /
+    1_000_000;
   const grossSolEquivalent =
     (solRateQuery.data ?? 0) > 0 ? grossUsdc / (solRateQuery.data ?? 1) : 0;
   return (
@@ -309,13 +320,23 @@ export function PayoutClaimScreen() {
   const wallet = useAppStore((s) => s.wallet);
   const solBalance = useAppStore((s) => s.solBalanceLamports) / 1_000_000_000;
   const { committee, routeCommitteeId } = useSelectedCommittee();
+  const historyQuery = useQuery({
+    queryKey: ["committee-history", committee?.id],
+    queryFn: () => fetchCommitteeHistory(committee?.id as string),
+    enabled: !!committee?.id,
+  });
   const solRateQuery = useQuery({
     queryKey: ["sol-usdc-rate-payout-claim"],
     queryFn: fetchSolUsdcRate,
     refetchInterval: 60_000,
   });
-  const grossLamports =
+  const cycleContributionMicroUsdc = (historyQuery.data?.contributions ?? [])
+    .filter((item) => (item.cycle_number ?? 0) === (committee?.currentCycle ?? 0))
+    .reduce((sum, item) => sum + Number(item.amount_micro_usdc ?? 0), 0);
+  const fallbackCycleGrossMicroUsdc =
     (committee?.contributionLamports ?? 0) * Math.max(1, committee?.memberCount ?? 1);
+  const grossLamports =
+    cycleContributionMicroUsdc > 0 ? cycleContributionMicroUsdc : fallbackCycleGrossMicroUsdc;
   const feeLamports = Math.round(grossLamports * 0.015);
   const netLamports = Math.max(0, grossLamports - feeLamports);
   const grossUsdc = grossLamports / 1_000_000;

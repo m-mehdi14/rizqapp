@@ -1340,6 +1340,20 @@ committeesRouter.post("/:id/contributions", async (req, res) => {
       }
     }
 
+    const alreadyPaidThisCycle = await prisma.committeeContribution.findFirst({
+      where: {
+        committee_id: committee.id,
+        user_id: user.id,
+        cycle_number: committee.current_cycle,
+      },
+      select: { id: true },
+    });
+    if (alreadyPaidThisCycle) {
+      return res.status(409).json({
+        error: `Contribution for cycle ${committee.current_cycle} already recorded for this member`,
+      });
+    }
+
     await prisma.committeeContribution.create({
       data: {
         committee_id: committee.id,
@@ -1367,7 +1381,7 @@ committeesRouter.post("/:id/payouts/claim", async (req, res) => {
     await ensureCommitteeTables();
     const prisma = getPrisma();
     const committeeId = String(req.params.id);
-    const { recipient_wallet, amount_micro_usdc, tx_signature, cycle_number } = req.body ?? {};
+    const { recipient_wallet, amount_micro_usdc, tx_signature } = req.body ?? {};
     if (!recipient_wallet || amount_micro_usdc == null || !tx_signature) {
       return res
         .status(400)
@@ -1376,7 +1390,16 @@ committeesRouter.post("/:id/payouts/claim", async (req, res) => {
 
     const committee = await prisma.committee.findUnique({
       where: { id: committeeId },
-      select: { id: true, pda_address: true, vault_address: true },
+      select: {
+        id: true,
+        pda_address: true,
+        vault_address: true,
+        current_cycle: true,
+        total_cycles: true,
+        frequency: true,
+        next_cycle_date: true,
+        contribution_amount: true,
+      },
     });
     if (!committee) return res.status(404).json({ error: "committee not found" });
 
@@ -1425,41 +1448,129 @@ committeesRouter.post("/:id/payouts/claim", async (req, res) => {
       where: { wallet_address: recipientWallet },
       select: { id: true },
     });
+    if (!recipient?.id) {
+      return res.status(404).json({ error: "recipient user not found" });
+    }
 
-    await prisma.committeePayout.create({
-      data: {
+    const recipientMembership = await prisma.committeeMember.findFirst({
+      where: {
         committee_id: committee.id,
-        recipient_user_id: recipient?.id,
-        recipient_wallet: recipientWallet,
-        amount_micro_usdc: BigInt(Math.round(amount)),
-        tx_signature: signature,
-        cycle_number:
-          typeof cycle_number === "number" && Number.isFinite(cycle_number)
-            ? Math.round(cycle_number)
-            : null,
+        user_id: recipient.id,
+        status: { in: ["active", "suspended"] },
+      },
+      select: { id: true, payout_position: true },
+    });
+    if (!recipientMembership) {
+      return res.status(403).json({ error: "recipient is not an active committee member" });
+    }
+    if ((recipientMembership.payout_position ?? 0) !== committee.current_cycle) {
+      return res.status(403).json({
+        error: `payout can only be claimed by current cycle turn holder (cycle ${committee.current_cycle})`,
+      });
+    }
+
+    const existingCyclePayout = await prisma.committeePayout.findFirst({
+      where: {
+        committee_id: committee.id,
+        cycle_number: committee.current_cycle,
+      },
+      select: { id: true },
+    });
+    if (existingCyclePayout) {
+      return res.status(409).json({
+        error: `payout for cycle ${committee.current_cycle} is already claimed`,
+      });
+    }
+
+    const activeMembersCount = await prisma.committeeMember.count({
+      where: { committee_id: committee.id, status: "active" },
+    });
+    const cyclePaidContributorRows = await prisma.committeeContribution.findMany({
+      where: {
+        committee_id: committee.id,
+        cycle_number: committee.current_cycle,
+      },
+      select: { user_id: true },
+      distinct: ["user_id"],
+    });
+    const cyclePaidContributors = cyclePaidContributorRows.length;
+    if (cyclePaidContributors < activeMembersCount) {
+      return res.status(409).json({
+        error: `payout is not ready: ${cyclePaidContributors}/${activeMembersCount} active members paid cycle ${committee.current_cycle}`,
+      });
+    }
+
+    const cycleContributionAggregate = await prisma.committeeContribution.aggregate({
+      where: {
+        committee_id: committee.id,
+        cycle_number: committee.current_cycle,
+      },
+      _sum: {
+        amount_micro_usdc: true,
       },
     });
+    const grossCycleAmount = Number(cycleContributionAggregate._sum.amount_micro_usdc ?? 0);
+    if (!Number.isFinite(grossCycleAmount) || grossCycleAmount <= 0) {
+      return res.status(409).json({ error: "payout is not ready: cycle pool is empty" });
+    }
+    const platformFee = Math.round(grossCycleAmount * 0.015);
+    const payableAmount = Math.max(0, grossCycleAmount - platformFee);
+    if (payableAmount <= 0) {
+      return res.status(409).json({ error: "payout is not ready: net amount is zero" });
+    }
 
-    if (recipient?.id) {
-      await prisma.committeeMember.updateMany({
+    await prisma.$transaction(async (tx) => {
+      await tx.committeePayout.create({
+        data: {
+          committee_id: committee.id,
+          recipient_user_id: recipient.id,
+          recipient_wallet: recipientWallet,
+          amount_micro_usdc: BigInt(payableAmount),
+          tx_signature: signature,
+          cycle_number: committee.current_cycle,
+        },
+      });
+
+      await tx.committeeMember.updateMany({
         where: {
           committee_id: committee.id,
           user_id: recipient.id,
         },
         data: {
           has_received: true,
-          received_amount: BigInt(Math.round(amount)),
+          received_amount: BigInt(payableAmount),
           received_at: new Date(),
         },
       });
-    }
+
+      const nextCycle = committee.current_cycle + 1;
+      const completed = nextCycle > committee.total_cycles;
+      const currentNextCycleDate =
+        committee.next_cycle_date ?? new Date(Date.now() + mapFrequencyToDays(committee.frequency) * 86400000);
+      const nextCycleDate = new Date(
+        currentNextCycleDate.getTime() + mapFrequencyToDays(committee.frequency) * 86400000
+      );
+      await tx.committee.update({
+        where: { id: committee.id },
+        data: completed
+          ? {
+              current_cycle: committee.total_cycles,
+              status: "completed",
+            }
+          : {
+              current_cycle: nextCycle,
+              next_cycle_date: nextCycleDate,
+            },
+      });
+    });
 
     return res.json({
       ok: true,
       committee_id: committee.id,
       recipient_wallet: recipientWallet,
-      amount_micro_usdc: Math.round(amount),
+      amount_micro_usdc: payableAmount,
       tx_signature: signature,
+      cycle_number: committee.current_cycle,
     });
   } catch (e) {
     console.error(e);
