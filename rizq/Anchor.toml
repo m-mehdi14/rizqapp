@@ -5,23 +5,23 @@ anchor_version = "0.31.1"
 resolution = true
 skip-lint = false
 
-[programs.localnet]
-savings_goal = "86ToDxAfBiJmnDVZsqES12hoAiRsEmgmqdyKj5FNgLaM"
-prediction_pool = "BT3W76giGrD5PkR55UE78KPdxpHFWp8a5iHZgzBvLQJK"
-payout = "AXBFPJPcxx1n2uZM9K1chRZX7dUDPr9mDRabAREKs8Yy"
-
 [programs.devnet]
-savings_goal = "86ToDxAfBiJmnDVZsqES12hoAiRsEmgmqdyKj5FNgLaM"
-prediction_pool = "BT3W76giGrD5PkR55UE78KPdxpHFWp8a5iHZgzBvLQJK"
+committee_safety = "Cpia1FnXf1iVdaJZgP8CAgrairq851M8oHiyE8G35M41"
+payout = "3whdF5HrQAk83356SMcC6T64hXfYjFDBsh2DoSSba9q8"
+prediction_pool = "FXZ1aRhFnQixjtb4WVf8PX3V1sboCrphvfeuuwhuJiRQ"
+savings_goal = "CDmiBaaZtT11r6ANAsv4gRVKqKeQdqVJdgcY2CZxUM7U"
+
+[programs.localnet]
+committee_safety = "11111111111111111111111111111111"
 payout = "AXBFPJPcxx1n2uZM9K1chRZX7dUDPr9mDRabAREKs8Yy"
+prediction_pool = "BT3W76giGrD5PkR55UE78KPdxpHFWp8a5iHZgzBvLQJK"
+savings_goal = "86ToDxAfBiJmnDVZsqES12hoAiRsEmgmqdyKj5FNgLaM"
 
 [registry]
 url = "https://api.apr.dev"
 
 [provider]
-cluster = "Devnet"
-# CLI signer: put the keypair JSON whose pubkey is below at `wallet` (cannot sign from pubkey alone).
-# Expected deployer pubkey: 5xsjSLua1idjkW6qfaSLbRfMkUBtFDHVsuce6pi25tt
+cluster = "devnet"
 wallet = "~/.config/solana/id.json"
 
 [scripts]

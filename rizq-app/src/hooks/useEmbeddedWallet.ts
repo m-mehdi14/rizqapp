@@ -65,6 +65,40 @@ export function useEmbeddedWallet() {
     }
   }, [setWalletConnection, walletProvider]);
 
+  const signAndSendPreparedTransaction = useCallback(
+    async (walletAddress: string, tx: Transaction): Promise<string> => {
+      const active = keypair ?? (await loadEmbeddedKeypair());
+      if (!active) {
+        throw new Error("Embedded wallet missing. Create wallet first.");
+      }
+      const owner = active.publicKey.toBase58();
+      if (owner !== walletAddress) {
+        throw new Error("Embedded wallet mismatch. Reconnect embedded wallet.");
+      }
+      const latest = await connection.getLatestBlockhash("confirmed");
+      if (!tx.recentBlockhash) {
+        tx.recentBlockhash = latest.blockhash;
+        tx.lastValidBlockHeight = latest.lastValidBlockHeight;
+      }
+      tx.feePayer = active.publicKey;
+      tx.sign(active);
+      const signature = await connection.sendRawTransaction(tx.serialize(), {
+        preflightCommitment: "confirmed",
+        skipPreflight: false,
+      });
+      await connection.confirmTransaction(
+        {
+          signature,
+          blockhash: tx.recentBlockhash,
+          lastValidBlockHeight: tx.lastValidBlockHeight ?? latest.lastValidBlockHeight,
+        },
+        "confirmed"
+      );
+      return signature;
+    },
+    [keypair]
+  );
+
   const signAndSendDevnetProofTx = useCallback(
     async (walletAddress: string): Promise<string> => {
       const active = keypair ?? (await loadEmbeddedKeypair());
@@ -113,6 +147,7 @@ export function useEmbeddedWallet() {
       createEmbeddedWallet,
       disconnectEmbeddedWallet,
       signAndSendDevnetProofTx,
+      signAndSendPreparedTransaction,
     }),
     [
       connectEmbeddedWallet,
@@ -120,6 +155,7 @@ export function useEmbeddedWallet() {
       disconnectEmbeddedWallet,
       keypair,
       signAndSendDevnetProofTx,
+      signAndSendPreparedTransaction,
       wallet,
       walletProvider,
     ]

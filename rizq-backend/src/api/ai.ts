@@ -175,7 +175,8 @@ aiRouter.post("/chat", async (req, res) => {
     return res.json({ message });
   } catch (e) {
     console.error(e);
-    return res.status(500).json({ error: "server error" });
+    const detail = e instanceof Error ? e.message : "unknown error";
+    return res.status(500).json({ error: "server error", detail });
   }
 });
 
@@ -210,7 +211,8 @@ aiRouter.post("/chat/general", async (req, res) => {
     return res.json({ message });
   } catch (e) {
     console.error(e);
-    return res.status(500).json({ error: "server error" });
+    const detail = e instanceof Error ? e.message : "unknown error";
+    return res.status(500).json({ error: "server error", detail });
   }
 });
 

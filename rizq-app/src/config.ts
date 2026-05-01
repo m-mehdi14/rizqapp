@@ -9,6 +9,7 @@ import {
   RIZQ_USDC_MINT,
   RIZQ_WEB3AUTH_CLIENT_ID,
   RIZQ_WEB3AUTH_REDIRECT_URL,
+  RIZQ_COMMITTEE_SAFETY_PROGRAM_ID,
 } from "@env";
 
 export const API_URL = RIZQ_API_URL ?? "http://10.0.2.2:3000";
@@ -21,6 +22,11 @@ export const PHANTOM_CONNECT_REDIRECT_URL =
   RIZQ_PHANTOM_CONNECT_REDIRECT_URL ?? `${PHANTOM_CONNECT_SCHEME}://phantom-auth-callback`;
 export const WEB3AUTH_CLIENT_ID = RIZQ_WEB3AUTH_CLIENT_ID ?? "";
 export const WEB3AUTH_REDIRECT_URL = RIZQ_WEB3AUTH_REDIRECT_URL ?? "com.rizqapp://auth";
+
+/** committee_safety program on devnet — override via RIZQ_COMMITTEE_SAFETY_PROGRAM_ID */
+export const COMMITTEE_SAFETY_PROGRAM_ID = (
+  RIZQ_COMMITTEE_SAFETY_PROGRAM_ID ?? "Cpia1FnXf1iVdaJZgP8CAgrairq851M8oHiyE8G35M41"
+).trim();
 
 // Backward-compatible exports for existing imports.
 export const SUPABASE_URL = "";

@@ -14,13 +14,18 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { CommitteesStackParamList } from "../../navigation/RootNavigator";
 import { colors, spacing } from "../../theme/tokens";
 import {
+  depositCommitteeCollateral,
   fetchCommitteeInvite,
+  fetchCommitteeJoinSlot,
   fetchCommittees,
   fetchSessionCommittees,
   joinCommittee,
   updateSessionKycStatus,
   verifyKyc,
 } from "../../api/rizqApi";
+import { COMMITTEE_SAFETY_PROGRAM_ID } from "../../config";
+import { useSolanaTransactionSigner } from "../../hooks/useSolanaTransactionSigner";
+import { memberDepositAndJoinOnChain } from "../../solana/committeeSafetyProgram";
 import { useAppStore } from "../../store/useAppStore";
 import { StepIndicator } from "../createKameti/components/StepIndicator";
 import { WizardFooter } from "../createKameti/components/WizardFooter";
@@ -59,6 +64,7 @@ export function JoinKametiWizardScreen() {
   const kycStatus = useAppStore((s) => s.kycStatus);
   const setKycStatus = useAppStore((s) => s.setKycStatus);
   const addCommittee = useAppStore((s) => s.addCommittee);
+  const { signAndSendPrepared } = useSolanaTransactionSigner();
   const {
     hasAcceptedRules,
     setHasAcceptedRules,
@@ -117,6 +123,38 @@ export function JoinKametiWizardScreen() {
   const joinMutation = useMutation({
     mutationFn: async () => {
       if (!inviteCommitteeId) throw new Error("Load invite first");
+      if (!wallet && !authToken) throw new Error("Connect wallet or sign in first");
+      const signatureBase = (wallet ?? authToken ?? "session").replace(/[^a-zA-Z0-9]/g, "");
+      let collateralSignature = `wallet-proof-collateral-${Date.now()}-${signatureBase.slice(0, 20)}`;
+
+      const orderType = (inviteData?.payoutOrderType ?? "").toLowerCase();
+      const canChainMemberJoin =
+        Boolean(wallet) &&
+        Boolean(authToken) &&
+        Boolean(COMMITTEE_SAFETY_PROGRAM_ID) &&
+        Boolean(inviteData?.managerWallet) &&
+        orderType !== "random";
+
+      if (canChainMemberJoin) {
+        const slot = await fetchCommitteeJoinSlot({
+          committeeId: inviteCommitteeId,
+          token: authToken as string,
+        });
+        const { depositSig } = await memberDepositAndJoinOnChain({
+          managerWalletAddress: inviteData!.managerWallet as string,
+          memberWalletAddress: wallet as string,
+          payoutPosition: slot.payout_position,
+          signAndSendPrepared,
+        });
+        collateralSignature = depositSig;
+      }
+
+      await depositCommitteeCollateral({
+        committeeId: inviteCommitteeId,
+        txSignature: collateralSignature,
+        wallet: wallet ?? undefined,
+        authToken: authToken ?? undefined,
+      });
       return await joinCommittee({
         committeeId: inviteCommitteeId,
         wallet: wallet ?? undefined,
@@ -145,6 +183,8 @@ export function JoinKametiWizardScreen() {
         setJoinError("This committee requires verified KYC.");
       } else if (message.includes("nominee_required")) {
         setJoinError("This committee requires a nominee profile.");
+      } else if (message.includes("collateral_required")) {
+        setJoinError("Collateral deposit is required before joining this committee.");
       } else {
         setJoinError(message);
       }

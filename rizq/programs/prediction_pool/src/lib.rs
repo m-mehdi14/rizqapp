@@ -3,7 +3,7 @@ use anchor_spl::token::{transfer, Mint, Token, TokenAccount, Transfer};
 use savings_goal::program::SavingsGoal as SavingsGoalProgram;
 use savings_goal::{self, SavingsGoal};
 
-declare_id!("BT3W76giGrD5PkR55UE78KPdxpHFWp8a5iHZgzBvLQJK");
+declare_id!("FXZ1aRhFnQixjtb4WVf8PX3V1sboCrphvfeuuwhuJiRQ");
 
 pub const MIN_CONTRIBUTION: u64 = 5_000_000; // 5 USDC
 pub const MAX_MEMBERS: usize = 50;

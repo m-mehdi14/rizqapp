@@ -110,6 +110,8 @@ model Committee {
   status              String    @default("forming")
   pda_address         String?   @unique
   vault_address       String?
+  safety_committee_pda String?
+  safety_initialized_tx String?
   invite_code         String?   @unique
   platform_fee_pct    Decimal?  @default(1.5)
   next_cycle_date     DateTime?
@@ -135,6 +137,16 @@ model CommitteeMember {
   has_received    Boolean   @default(false)
   received_at     DateTime?
   received_amount BigInt?
+  penalty_strikes Int       @default(0)
+  total_penalties_paid BigInt @default(0)
+  last_contribution_cycle Int?
+  is_eligible_for_payout Boolean @default(true)
+  collateral_deposited BigInt @default(0)
+  deferred_total BigInt @default(0)
+  deferred_released BigInt @default(0)
+  member_state_pda String?
+  collateral_vault_pda String?
+  deferred_escrow_pda String?
 
   committee Committee @relation(fields: [committee_id], references: [id])
   user      User      @relation(fields: [user_id], references: [id])

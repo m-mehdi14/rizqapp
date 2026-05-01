@@ -8,6 +8,8 @@ export type JoinInviteData = {
   contributionAmountUSDC: number;
   frequency: "Weekly" | "Monthly" | "Bi-monthly" | "Quarterly";
   payoutPosition: number;
+  managerWallet: string | null;
+  payoutOrderType: string | null;
   kycRequired: boolean;
   nomineeRequired: boolean;
   gracePeriod: "1 day" | "3 days" | "7 days";
@@ -22,6 +24,8 @@ export const mockInviteData: JoinInviteData = {
   contributionAmountUSDC: 50,
   frequency: "Monthly",
   payoutPosition: 4,
+  managerWallet: null,
+  payoutOrderType: null,
   kycRequired: true,
   nomineeRequired: true,
   gracePeriod: "3 days",
@@ -60,6 +64,8 @@ export function mapJoinInvitePreviewToJoinInviteData(preview: JoinInvitePreview)
     contributionAmountUSDC: preview.contribution_amount_usdc,
     frequency,
     payoutPosition: preview.payout_position,
+    managerWallet: preview.manager_wallet?.trim() ?? null,
+    payoutOrderType: preview.payout_order_type?.trim() ?? null,
     kycRequired: preview.kyc_required,
     nomineeRequired: preview.nominee_required,
     gracePeriod,

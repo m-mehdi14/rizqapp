@@ -1,0 +1,20 @@
+[package]
+name = "committee_safety"
+version = "0.1.0"
+description = "Rizq committee safety program (collateral + deferred payout + penalties)"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "committee_safety"
+
+[features]
+no-entrypoint = []
+no-idl = []
+no-log-ix-name = []
+cpi = ["no-entrypoint"]
+idl-build = ["anchor-lang/idl-build"]
+default = []
+
+[dependencies]
+anchor-lang = "0.31.1"

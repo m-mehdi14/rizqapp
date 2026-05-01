@@ -173,6 +173,20 @@ const createTabBarIcon = ({ focused }: { focused: boolean }) => (
   </View>
 );
 
+/** Must be reused everywhere `tabBarStyle` is overridden — `undefined` resets to OS default (full-width bar). */
+const FLOATING_TAB_BAR_STYLE = {
+  position: "absolute" as const,
+  marginHorizontal: 20,
+  marginBottom: 16,
+  borderRadius: 32,
+  backgroundColor: "rgba(13,27,46,0.92)",
+  borderTopWidth: 0,
+  borderWidth: 1,
+  borderColor: "rgba(255,255,255,0.08)",
+  height: 68,
+  paddingTop: 8,
+};
+
 function CommitteesStackNav() {
   return (
     <CommitteesStack.Navigator screenOptions={{ headerShown: false }}>
@@ -269,18 +283,7 @@ function MainTabs() {
       screenOptions={{
         headerShown: false,
         tabBarHideOnKeyboard: true,
-        tabBarStyle: {
-          position: "absolute",
-          marginHorizontal: 20,
-          marginBottom: 16,
-          borderRadius: 32,
-          backgroundColor: "rgba(13,27,46,0.92)",
-          borderTopWidth: 0,
-          borderWidth: 1,
-          borderColor: "rgba(255,255,255,0.08)",
-          height: 68,
-          paddingTop: 8,
-        },
+        tabBarStyle: FLOATING_TAB_BAR_STYLE,
         tabBarActiveTintColor: colors.brandGreen,
         tabBarInactiveTintColor: colors.textSecondary,
         tabBarLabelStyle: { fontSize: 11, fontWeight: "600" },
@@ -321,7 +324,7 @@ function MainTabs() {
           return {
             title: "Rizq AI",
             tabBarIcon: aiTabBarIcon,
-            tabBarStyle: shouldHideTabBar ? { display: "none" } : undefined,
+            tabBarStyle: shouldHideTabBar ? { display: "none" } : FLOATING_TAB_BAR_STYLE,
           };
         }}
       />

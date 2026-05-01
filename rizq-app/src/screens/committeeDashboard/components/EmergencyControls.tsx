@@ -6,9 +6,17 @@ type Props = {
   isPaused?: boolean;
   onTogglePause?: () => void;
   onExport?: () => void;
+  onRunPenaltyCheck?: () => void;
+  penaltyLoading?: boolean;
 };
 
-export function EmergencyControls({ isPaused, onTogglePause, onExport }: Props) {
+export function EmergencyControls({
+  isPaused,
+  onTogglePause,
+  onExport,
+  onRunPenaltyCheck,
+  penaltyLoading,
+}: Props) {
   return (
     <View style={styles.wrap}>
       <Text style={styles.heading}>Emergency Controls</Text>
@@ -26,6 +34,15 @@ export function EmergencyControls({ isPaused, onTogglePause, onExport }: Props) 
         onPress={onExport}
       >
         <Text style={styles.exportText}>Export Full History</Text>
+      </Pressable>
+      <Pressable
+        style={[styles.button, styles.penaltyButton, penaltyLoading && styles.disabled]}
+        onPress={onRunPenaltyCheck}
+        disabled={penaltyLoading}
+      >
+        <Text style={styles.penaltyText}>
+          {penaltyLoading ? "Running Penalty Check..." : "Run Penalty Check"}
+        </Text>
       </Pressable>
     </View>
   );
@@ -52,4 +69,10 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(64,196,255,0.15)",
   },
   exportText: { color: "#40C4FF", fontWeight: "700", fontSize: typography.bodySmall },
+  penaltyButton: {
+    borderColor: "rgba(255,82,82,0.5)",
+    backgroundColor: "rgba(255,82,82,0.12)",
+  },
+  penaltyText: { color: "#FF8A80", fontWeight: "700", fontSize: typography.bodySmall },
+  disabled: { opacity: 0.55 },
 });

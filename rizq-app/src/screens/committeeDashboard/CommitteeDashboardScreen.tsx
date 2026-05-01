@@ -6,6 +6,7 @@ import type { NavigationProp, ParamListBase } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRoute } from "@react-navigation/native";
+import { GlassCard } from "../../components/GlassCard";
 import { ScreenShell } from "../../components/ScreenShell";
 import { SectionHeader } from "../../components/SectionHeader";
 import { colors, radii, spacing, typography } from "../../theme/tokens";
@@ -14,13 +15,19 @@ import {
   fetchCommitteeAnnouncements,
   fetchCommitteeDashboard,
   fetchCommitteeHistory,
+  fetchCommitteePenaltyEvents,
   fetchSolUsdcRate,
+  enforceCommitteePenalties,
+  depositCommitteeCollateral,
+  recordCommitteePenaltyOnChain,
   reorderCommitteePayout,
   requestCommitteeOrderChangeApproval,
   sendCommitteePaymentReminder,
   sendCommitteeAnnouncement,
   updateCommitteeStatus,
 } from "../../api/rizqApi";
+import { useSolanaTransactionSigner } from "../../hooks/useSolanaTransactionSigner";
+import { processMissedPaymentTx } from "../../solana/committeeSafetyProgram";
 import { useAppStore } from "../../store/useAppStore";
 import { AccordionSection } from "./components/AccordionSection";
 import { AnnouncementSender } from "./components/AnnouncementSender";
@@ -34,6 +41,7 @@ import { PaymentMatrix } from "./components/PaymentMatrix";
 import { PoolStatus } from "./components/PoolStatus";
 import { PayoutReorder } from "./components/PayoutReorder";
 import { PayoutSchedule } from "./components/PayoutSchedule";
+import { PenaltyEvents } from "./components/PenaltyEvents";
 import { TransactionHistory } from "./components/TransactionHistory";
 import type { Member, PayoutTurn } from "./store/useCommitteeDashboardStore";
 
@@ -47,7 +55,9 @@ export function CommitteeDashboardScreen() {
   const routeCommitteeId =
     (route.params as { committeeId?: string } | undefined)?.committeeId ?? undefined;
   const authToken = useAppStore((s) => s.authToken);
+  const wallet = useAppStore((s) => s.wallet);
   const userId = useAppStore((s) => s.userId);
+  const { signAndSendPrepared, canSignPrepared } = useSolanaTransactionSigner();
   const committees = useAppStore((s) => s.committees);
   const activeCommittee =
     committees.find((committee) => committee.id === routeCommitteeId) ?? committees[0] ?? null;
@@ -72,6 +82,16 @@ export function CommitteeDashboardScreen() {
     queryKey: ["committee-announcements", activeCommittee?.id],
     queryFn: () => fetchCommitteeAnnouncements(activeCommittee?.id as string),
     enabled: !!activeCommittee?.id,
+    refetchInterval: 15000,
+  });
+  const penaltiesQuery = useQuery({
+    queryKey: ["committee-penalties", activeCommittee?.id],
+    queryFn: () => fetchCommitteePenaltyEvents(activeCommittee?.id as string, authToken as string),
+    enabled:
+      !!activeCommittee?.id &&
+      !!authToken &&
+      isManagerView &&
+      Boolean(dashboardQuery.data?.committee.is_manager),
     refetchInterval: 15000,
   });
   const solRateQuery = useQuery({
@@ -238,6 +258,7 @@ export function CommitteeDashboardScreen() {
     dashboardQuery.data?.committee.name,
     dashboardQuery.data?.committee.next_cycle_date,
     dashboardQuery.data?.committee.total_cycles,
+    effectiveSolUsdcRate,
     hasPaidCurrentCycle,
     historyQuery.data?.contributions,
     paidAt,
@@ -266,6 +287,29 @@ export function CommitteeDashboardScreen() {
       effectiveSolUsdcRate,
     ]
   );
+  const safetyView = useMemo(() => {
+    const safety = dashboardQuery.data?.committee.safety;
+    if (!safety) return null;
+    const collateralUsdc = Number(safety.collateral_deposited_micro_usdc ?? 0) / 1_000_000;
+    const deferredTotalUsdc = Number(safety.deferred_total_micro_usdc ?? 0) / 1_000_000;
+    const deferredReleasedUsdc = Number(safety.deferred_released_micro_usdc ?? 0) / 1_000_000;
+    const deferredRemainingUsdc = Math.max(0, deferredTotalUsdc - deferredReleasedUsdc);
+    const pid = safety.safety_program_id?.trim();
+    const programShort =
+      pid && pid.length > 12 ? `${pid.slice(0, 4)}…${pid.slice(-4)}` : pid ?? null;
+    return {
+      mode: safety.onchain_enabled
+        ? "Devnet committee_safety · rules enforced in backend"
+        : "Backend safety mirror",
+      onchain: Boolean(safety.onchain_enabled),
+      programShort,
+      strikes: Number(safety.penalty_strikes ?? 0),
+      payoutEligibility: safety.is_eligible_for_payout ? "Eligible" : "Suspended",
+      collateralUsdc,
+      deferredReleasedUsdc,
+      deferredRemainingUsdc,
+    };
+  }, [dashboardQuery.data?.committee.safety]);
 
   const isPaused = (dashboardQuery.data?.committee.status ?? "").toLowerCase() === "paused";
   const getErrorMessage = (error: unknown) =>
@@ -383,6 +427,100 @@ export function CommitteeDashboardScreen() {
       Alert.alert("Reminder failed", getErrorMessage(error));
     },
   });
+  const enforcePenaltyMutation = useMutation({
+    mutationFn: async () => {
+      if (!authToken || !activeCommittee?.id) throw new Error("Login required for manager controls.");
+      const dash = dashboardQuery.data;
+      const safety = dash?.committee.safety;
+      const managerW = dash?.committee.manager_wallet?.trim() ?? "";
+      const overdueMember = (dash?.members ?? []).find(
+        (m) => m.status === "overdue" && m.wallet_address && m.wallet_address.length > 0
+      );
+      const useChainPenalty =
+        Boolean(safety?.onchain_enabled) &&
+        Boolean(safety?.committee_pda) &&
+        managerW.length > 0 &&
+        Boolean(overdueMember?.wallet_address) &&
+        Boolean(wallet) &&
+        wallet === managerW &&
+        canSignPrepared;
+
+      if (useChainPenalty && overdueMember?.wallet_address) {
+        const sig = await processMissedPaymentTx({
+          managerWalletAddress: managerW,
+          targetMemberWalletAddress: overdueMember.wallet_address,
+          feePayerWalletAddress: wallet as string,
+          signAndSendPrepared,
+        });
+        return await recordCommitteePenaltyOnChain({
+          committeeId: activeCommittee.id,
+          token: authToken,
+          targetWallet: overdueMember.wallet_address,
+          txSignature: sig,
+        });
+      }
+
+      return await enforceCommitteePenalties({
+        committeeId: activeCommittee.id,
+        token: authToken,
+      });
+    },
+    onSuccess: async (result) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["committee-dashboard", activeCommittee?.id] }),
+        queryClient.invalidateQueries({ queryKey: ["committee-history", activeCommittee?.id] }),
+        queryClient.invalidateQueries({ queryKey: ["committee-announcements", activeCommittee?.id] }),
+      ]);
+      if ("strike_number" in result && result.strike_number != null) {
+        Alert.alert(
+          "On-chain penalty recorded",
+          `Strike ${result.strike_number} synced for overdue member. Avoid running full penalty check immediately after to prevent duplicate strikes.`
+        );
+        return;
+      }
+      const bulk = result as {
+        overdue: boolean;
+        checked_members: number;
+        penalized_members: number;
+      };
+      const title = bulk.overdue ? "Penalty check complete" : "Penalty check not needed";
+      const detail = bulk.overdue
+        ? `Checked ${bulk.checked_members} members, penalized ${bulk.penalized_members}.`
+        : "Current cycle is not overdue yet.";
+      Alert.alert(title, detail);
+    },
+    onError: (error) => {
+      Alert.alert("Penalty check failed", getErrorMessage(error));
+    },
+  });
+
+  const showManagerCollateralPrompt = useMemo(() => {
+    const c = dashboardQuery.data?.committee;
+    if (!c?.is_manager || !c.safety) return false;
+    return Number(c.safety.collateral_deposited_micro_usdc ?? 0) === 0;
+  }, [dashboardQuery.data?.committee]);
+
+  const recordManagerCollateralMutation = useMutation({
+    mutationFn: async () => {
+      if (!authToken || !activeCommittee?.id || !wallet) {
+        throw new Error("Sign in and connect your wallet first.");
+      }
+      const sig = `wallet-proof-collateral-${Date.now()}-${wallet.replace(/[^a-zA-Z0-9]/g, "").slice(0, 24)}`;
+      return await depositCommitteeCollateral({
+        committeeId: activeCommittee.id,
+        txSignature: sig,
+        wallet,
+        authToken,
+      });
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["committee-dashboard", activeCommittee?.id] });
+      Alert.alert("Collateral recorded", "Your manager collateral lock is saved for penalties and safety.");
+    },
+    onError: (error) => {
+      Alert.alert("Collateral record failed", getErrorMessage(error));
+    },
+  });
 
   return (
     <ScreenShell>
@@ -446,7 +584,45 @@ export function CommitteeDashboardScreen() {
               });
             }}
           />
+          {showManagerCollateralPrompt ? (
+            <GlassCard style={styles.collateralPrompt}>
+              <Text style={styles.collateralPromptTitle}>Manager collateral</Text>
+              <Text style={styles.collateralPromptBody}>
+                As manager you lock the same per-cycle amount as members. This should fill automatically when you
+                launch with on-chain safety; if it still shows $0 here, tap below to record it in the app (off-chain
+                mirror — same as member join without chain).
+              </Text>
+              <Pressable
+                style={[
+                  styles.collateralPromptBtn,
+                  recordManagerCollateralMutation.isPending && styles.collateralPromptBtnDisabled,
+                ]}
+                disabled={recordManagerCollateralMutation.isPending}
+                onPress={() => recordManagerCollateralMutation.mutate()}
+              >
+                <Text style={styles.collateralPromptBtnText}>
+                  {recordManagerCollateralMutation.isPending ? "Saving…" : "Record collateral deposit"}
+                </Text>
+              </Pressable>
+            </GlassCard>
+          ) : null}
           <PoolStatus committee={committeeView} solUsdcRate={effectiveSolUsdcRate ?? null} />
+          {safetyView ? (
+            <View style={styles.safetyCard}>
+              <Text style={styles.safetyTitle}>{safetyView.mode}</Text>
+              {safetyView.programShort ? (
+                <Text style={styles.safetySub}>{`Program ${safetyView.programShort}`}</Text>
+              ) : null}
+              <Text style={styles.safetyRow}>{`Strikes: ${safetyView.strikes} · Payout: ${safetyView.payoutEligibility}`}</Text>
+              <Text style={styles.safetyRow}>{`Collateral: $${safetyView.collateralUsdc.toFixed(2)} USDC`}</Text>
+              <Text style={styles.safetyRow}>{`Deferred released: $${safetyView.deferredReleasedUsdc.toFixed(2)} · Remaining: $${safetyView.deferredRemainingUsdc.toFixed(2)}`}</Text>
+              {safetyView.onchain && safetyView.collateralUsdc <= 0 ? (
+                <Text style={styles.safetyHint}>
+                  Collateral shows $0 until a deposit is recorded: members via join; managers via launch (on-chain) plus API sync, or use “Record collateral deposit” below if needed.
+                </Text>
+              ) : null}
+            </View>
+          ) : null}
 
           <AccordionSection title="Members List" defaultOpen>
             <MembersList
@@ -541,7 +717,12 @@ export function CommitteeDashboardScreen() {
                         message: exportText,
                       });
                     }}
+                    onRunPenaltyCheck={() => enforcePenaltyMutation.mutate()}
+                    penaltyLoading={enforcePenaltyMutation.isPending}
                   />
+                </AccordionSection>
+                <AccordionSection title="Penalty Events" defaultOpen={false}>
+                  <PenaltyEvents events={penaltiesQuery.data ?? []} />
                 </AccordionSection>
               </ManagerPanel>
             </>
@@ -611,4 +792,39 @@ const styles = StyleSheet.create({
   },
   modeButtonText: { color: colors.textSecondary, fontSize: typography.bodySmall, fontWeight: "700" },
   modeButtonTextOn: { color: colors.brandGreen },
+  safetyCard: {
+    borderRadius: radii.card,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.12)",
+    backgroundColor: "rgba(255,255,255,0.04)",
+    padding: 12,
+    gap: 4,
+  },
+  safetyTitle: { color: colors.textPrimary, fontSize: typography.bodySmall, fontWeight: "800" },
+  safetySub: { color: colors.textSecondary, fontSize: typography.caption, marginTop: 2 },
+  safetyRow: { color: colors.textSecondary, fontSize: typography.caption },
+  safetyHint: {
+    color: colors.textSecondary,
+    fontSize: typography.caption,
+    marginTop: 8,
+    opacity: 0.9,
+    lineHeight: 18,
+  },
+  collateralPrompt: { padding: 14, gap: 10 },
+  collateralPromptTitle: {
+    color: colors.textPrimary,
+    fontSize: typography.bodySmall,
+    fontWeight: "800",
+  },
+  collateralPromptBody: { color: colors.textSecondary, fontSize: typography.caption, lineHeight: 18 },
+  collateralPromptBtn: {
+    marginTop: 4,
+    minHeight: 44,
+    borderRadius: radii.button,
+    backgroundColor: colors.brandGreen,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  collateralPromptBtnDisabled: { opacity: 0.55 },
+  collateralPromptBtnText: { color: colors.textInverse, fontWeight: "700", fontSize: typography.bodySmall },
 });

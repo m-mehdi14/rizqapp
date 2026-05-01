@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   Pressable,
   SafeAreaView,
   ScrollView,
@@ -9,7 +10,7 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { useNavigation, useRoute } from "@react-navigation/native";
+import { CommonActions, useNavigation, useRoute } from "@react-navigation/native";
 import type { NavigationProp, ParamListBase, RouteProp } from "@react-navigation/native";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CheckCircle, WarningCircle } from "phosphor-react-native";
@@ -19,9 +20,15 @@ import { colors, radii, spacing, typography } from "../../theme/tokens";
 import {
   claimCommitteePayout,
   createCommitteeContribution,
+  fetchCommitteeDashboard,
   fetchCommitteeHistory,
   fetchSolUsdcRate,
 } from "../../api/rizqApi";
+import { useSolanaTransactionSigner } from "../../hooks/useSolanaTransactionSigner";
+import {
+  contributeAndReleaseDeferredTx,
+  releasePayoutWithDeferralTx,
+} from "../../solana/committeeSafetyProgram";
 import { useAppStore } from "../../store/useAppStore";
 import type { CommitteesStackParamList } from "../../navigation/RootNavigator";
 
@@ -71,7 +78,9 @@ function Layout({
 export function PayContributionScreen() {
   const nav = useNavigation<NavigationProp<ParamListBase>>();
   const queryClient = useQueryClient();
+  const authToken = useAppStore((s) => s.authToken);
   const wallet = useAppStore((s) => s.wallet);
+  const { signAndSendPrepared, canSignPrepared } = useSolanaTransactionSigner();
   const solBalance = useAppStore((s) => s.solBalanceLamports) / 1_000_000_000;
   const { committee, routeCommitteeId } = useSelectedCommittee();
   const walletProvider = useAppStore((s) => s.walletProvider);
@@ -80,6 +89,18 @@ export function PayContributionScreen() {
     queryFn: fetchSolUsdcRate,
     refetchInterval: 60_000,
   });
+  const dashboardQuery = useQuery({
+    queryKey: ["committee-dashboard", committee?.id, "payments-pay"],
+    queryFn: () => fetchCommitteeDashboard(committee!.id, authToken ?? undefined),
+    enabled: !!committee?.id && !!authToken,
+  });
+  const safety = dashboardQuery.data?.committee.safety;
+  const managerWallet = dashboardQuery.data?.committee.manager_wallet ?? null;
+  const useOnChainDeferred =
+    Boolean(safety?.use_on_chain_deferred_contribution) &&
+    Boolean(managerWallet) &&
+    canSignPrepared &&
+    dashboardQuery.isFetched;
   const amountLamports = committee?.contributionLamports ?? 0;
   const amountUsdc = amountLamports / 1_000_000;
   const solUsdcRate = solRateQuery.data ?? 0;
@@ -96,7 +117,17 @@ export function PayContributionScreen() {
       if (!wallet || !committee?.id || amountLamports <= 0) {
         throw new Error("Wallet or committee missing");
       }
-      const signature = `wallet-proof-${Date.now()}-${wallet.replace(/[^a-zA-Z0-9]/g, "").slice(0, 24)}`;
+      let signature: string;
+      if (useOnChainDeferred && managerWallet) {
+        signature = await contributeAndReleaseDeferredTx({
+          managerWalletAddress: managerWallet,
+          memberWalletAddress: wallet,
+          contributionAmountMicro: amountLamports,
+          signAndSendPrepared,
+        });
+      } else {
+        signature = `wallet-proof-${Date.now()}-${wallet.replace(/[^a-zA-Z0-9]/g, "").slice(0, 24)}`;
+      }
       await createCommitteeContribution({
         committeeId: committee.id,
         wallet,
@@ -108,15 +139,27 @@ export function PayContributionScreen() {
       setSubmitError(null);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["committee-history", committee?.id] }),
+        queryClient.invalidateQueries({ queryKey: ["committee-dashboard", committee?.id] }),
         queryClient.invalidateQueries({ queryKey: ["committees", wallet] }),
         queryClient.invalidateQueries({ queryKey: ["committees-session"] }),
         queryClient.invalidateQueries({ queryKey: ["wallet-usdc", wallet] }),
         queryClient.invalidateQueries({ queryKey: ["wallet-sol", wallet] }),
         queryClient.invalidateQueries({ queryKey: ["wallet-transactions", wallet] }),
       ]);
-      nav.navigate("PayoutNotification", {
-        committeeId: routeCommitteeId,
-      });
+      const cid = routeCommitteeId ?? committee?.id;
+      Alert.alert(
+        "Contribution recorded",
+        "You will only claim payout when it is your turn in the schedule and every active member has paid for this cycle."
+      );
+      nav.dispatch(
+        CommonActions.reset({
+          index: 1,
+          routes: [
+            { name: "CommitteesHub" },
+            { name: "MemberDashboard", params: cid ? { committeeId: cid } : undefined },
+          ],
+        })
+      );
     },
     onError: (error) => {
       setSubmitError(error instanceof Error ? error.message : "Failed to record contribution");
@@ -179,7 +222,11 @@ export function PayContributionScreen() {
         </GlassCard>
       ) : null}
       {submitError ? <Text style={styles.errorText}>{submitError}</Text> : null}
-      <Text style={styles.hintText}>No manual signature required. Tap Pay when wallet is connected.</Text>
+      <Text style={styles.hintText}>
+        {useOnChainDeferred
+          ? "Sign one devnet transaction with your connected wallet (Web3Auth / embedded), then the app records it."
+          : "No manual signature required. Tap Pay when wallet is connected."}
+      </Text>
 
       <Pressable
         style={[
@@ -192,7 +239,8 @@ export function PayContributionScreen() {
           !committee ||
           !wallet ||
           !hasEnoughBalance ||
-          !hasEnoughFeeSol
+          !hasEnoughFeeSol ||
+          (useOnChainDeferred && !canSignPrepared)
         }
         onPress={() => payMutation.mutate()}
       >
@@ -317,7 +365,9 @@ export function PayoutNotificationScreen() {
 export function PayoutClaimScreen() {
   const nav = useNavigation<NavigationProp<ParamListBase>>();
   const queryClient = useQueryClient();
+  const authToken = useAppStore((s) => s.authToken);
   const wallet = useAppStore((s) => s.wallet);
+  const { signAndSendPrepared, canSignPrepared } = useSolanaTransactionSigner();
   const solBalance = useAppStore((s) => s.solBalanceLamports) / 1_000_000_000;
   const { committee, routeCommitteeId } = useSelectedCommittee();
   const historyQuery = useQuery({
@@ -325,6 +375,18 @@ export function PayoutClaimScreen() {
     queryFn: () => fetchCommitteeHistory(committee?.id as string),
     enabled: !!committee?.id,
   });
+  const dashboardQuery = useQuery({
+    queryKey: ["committee-dashboard", committee?.id, "payments-claim"],
+    queryFn: () => fetchCommitteeDashboard(committee!.id, authToken ?? undefined),
+    enabled: !!committee?.id && !!authToken,
+  });
+  const safety = dashboardQuery.data?.committee.safety;
+  const managerWallet = dashboardQuery.data?.committee.manager_wallet ?? null;
+  const useOnChainRelease =
+    Boolean(safety?.use_on_chain_payout_release) &&
+    Boolean(managerWallet) &&
+    canSignPrepared &&
+    dashboardQuery.isFetched;
   const solRateQuery = useQuery({
     queryKey: ["sol-usdc-rate-payout-claim"],
     queryFn: fetchSolUsdcRate,
@@ -357,7 +419,16 @@ export function PayoutClaimScreen() {
       if (!wallet || !committee?.id || netLamports <= 0) {
         throw new Error("Wallet or committee missing");
       }
-      const signature = `wallet-proof-${Date.now()}-${wallet.replace(/[^a-zA-Z0-9]/g, "").slice(0, 24)}`;
+      let signature: string;
+      if (useOnChainRelease && managerWallet) {
+        signature = await releasePayoutWithDeferralTx({
+          managerWalletAddress: managerWallet,
+          memberWalletAddress: wallet,
+          signAndSendPrepared,
+        });
+      } else {
+        signature = `wallet-proof-${Date.now()}-${wallet.replace(/[^a-zA-Z0-9]/g, "").slice(0, 24)}`;
+      }
       await claimCommitteePayout({
         committeeId: committee.id,
         recipientWallet: wallet,
@@ -413,10 +484,20 @@ export function PayoutClaimScreen() {
         </GlassCard>
       ) : null}
       {submitError ? <Text style={styles.errorText}>{submitError}</Text> : null}
-      <Text style={styles.hintText}>No manual signature required. Tap Claim when wallet is connected.</Text>
+      <Text style={styles.hintText}>
+        {useOnChainRelease
+          ? "Sign the on-chain payout release (Web3Auth / embedded), then the app records your claim."
+          : "No manual signature required. Tap Claim when wallet is connected."}
+      </Text>
       <Pressable
         style={styles.primaryBtn}
-        disabled={claimMutation.isPending || !wallet || !committee || !hasEnoughFeeSol}
+        disabled={
+          claimMutation.isPending ||
+          !wallet ||
+          !committee ||
+          !hasEnoughFeeSol ||
+          (useOnChainRelease && !canSignPrepared)
+        }
         onPress={() => claimMutation.mutate()}
       >
         {claimMutation.isPending ? (

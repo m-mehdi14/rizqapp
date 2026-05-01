@@ -1,0 +1,906 @@
+{
+  "address": "Cpia1FnXf1iVdaJZgP8CAgrairq851M8oHiyE8G35M41",
+  "metadata": {
+    "name": "committee_safety",
+    "version": "0.1.0",
+    "spec": "0.1.0",
+    "description": "Rizq committee safety program (collateral + deferred payout + penalties)"
+  },
+  "instructions": [
+    {
+      "name": "contribute_and_release_deferred",
+      "discriminator": [
+        27,
+        216,
+        72,
+        45,
+        59,
+        193,
+        176,
+        133
+      ],
+      "accounts": [
+        {
+          "name": "committee"
+        },
+        {
+          "name": "member_state",
+          "writable": true
+        },
+        {
+          "name": "deferred_escrow",
+          "writable": true
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "deposit_collateral",
+      "discriminator": [
+        156,
+        131,
+        142,
+        116,
+        146,
+        247,
+        162,
+        120
+      ],
+      "accounts": [
+        {
+          "name": "committee",
+          "writable": true
+        },
+        {
+          "name": "collateral_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  108,
+                  108,
+                  97,
+                  116,
+                  101,
+                  114,
+                  97,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "committee"
+              },
+              {
+                "kind": "account",
+                "path": "member"
+              }
+            ]
+          }
+        },
+        {
+          "name": "member",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "initialize_committee",
+      "discriminator": [
+        217,
+        197,
+        33,
+        172,
+        93,
+        122,
+        95,
+        190
+      ],
+      "accounts": [
+        {
+          "name": "committee",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  109,
+                  109,
+                  105,
+                  116,
+                  116,
+                  101,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "manager"
+              }
+            ]
+          }
+        },
+        {
+          "name": "manager",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "contribution_amount",
+          "type": "u64"
+        },
+        {
+          "name": "total_cycles",
+          "type": "u8"
+        },
+        {
+          "name": "grace_period_seconds",
+          "type": "i64"
+        }
+      ]
+    },
+    {
+      "name": "join_committee",
+      "discriminator": [
+        76,
+        16,
+        18,
+        209,
+        205,
+        51,
+        194,
+        24
+      ],
+      "accounts": [
+        {
+          "name": "committee",
+          "writable": true
+        },
+        {
+          "name": "collateral_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  108,
+                  108,
+                  97,
+                  116,
+                  101,
+                  114,
+                  97,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "committee"
+              },
+              {
+                "kind": "account",
+                "path": "member"
+              }
+            ]
+          }
+        },
+        {
+          "name": "member_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  101,
+                  109,
+                  98,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "committee"
+              },
+              {
+                "kind": "account",
+                "path": "member"
+              }
+            ]
+          }
+        },
+        {
+          "name": "member",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "payout_position",
+          "type": "u8"
+        }
+      ]
+    },
+    {
+      "name": "process_missed_payment",
+      "discriminator": [
+        35,
+        218,
+        209,
+        249,
+        193,
+        164,
+        9,
+        229
+      ],
+      "accounts": [
+        {
+          "name": "committee"
+        },
+        {
+          "name": "member_state",
+          "writable": true
+        },
+        {
+          "name": "collateral_vault",
+          "writable": true
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "release_payout_with_deferral",
+      "discriminator": [
+        166,
+        9,
+        131,
+        130,
+        126,
+        204,
+        210,
+        122
+      ],
+      "accounts": [
+        {
+          "name": "committee"
+        },
+        {
+          "name": "member_state",
+          "writable": true
+        },
+        {
+          "name": "deferred_escrow",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  101,
+                  115,
+                  99,
+                  114,
+                  111,
+                  119
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "committee"
+              },
+              {
+                "kind": "account",
+                "path": "member_wallet"
+              }
+            ]
+          }
+        },
+        {
+          "name": "member_wallet",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "return_collateral_on_completion",
+      "discriminator": [
+        67,
+        30,
+        28,
+        221,
+        159,
+        90,
+        229,
+        195
+      ],
+      "accounts": [
+        {
+          "name": "committee"
+        },
+        {
+          "name": "member_state"
+        },
+        {
+          "name": "collateral_vault",
+          "writable": true
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "validate_payout_trigger",
+      "discriminator": [
+        52,
+        125,
+        101,
+        211,
+        204,
+        254,
+        110,
+        203
+      ],
+      "accounts": [
+        {
+          "name": "committee"
+        },
+        {
+          "name": "member_state"
+        }
+      ],
+      "args": []
+    }
+  ],
+  "accounts": [
+    {
+      "name": "CollateralVault",
+      "discriminator": [
+        19,
+        189,
+        95,
+        155,
+        100,
+        9,
+        159,
+        145
+      ]
+    },
+    {
+      "name": "CommitteeMemberState",
+      "discriminator": [
+        57,
+        234,
+        17,
+        13,
+        228,
+        249,
+        70,
+        9
+      ]
+    },
+    {
+      "name": "CommitteeState",
+      "discriminator": [
+        53,
+        216,
+        85,
+        173,
+        98,
+        144,
+        180,
+        255
+      ]
+    },
+    {
+      "name": "DeferredEscrow",
+      "discriminator": [
+        215,
+        253,
+        238,
+        0,
+        173,
+        132,
+        33,
+        109
+      ]
+    }
+  ],
+  "events": [
+    {
+      "name": "CollateralDeposited",
+      "discriminator": [
+        244,
+        62,
+        77,
+        11,
+        135,
+        112,
+        61,
+        96
+      ]
+    },
+    {
+      "name": "CollateralReturned",
+      "discriminator": [
+        211,
+        45,
+        46,
+        135,
+        233,
+        100,
+        248,
+        80
+      ]
+    },
+    {
+      "name": "DeferredReleased",
+      "discriminator": [
+        177,
+        85,
+        168,
+        106,
+        89,
+        130,
+        123,
+        136
+      ]
+    },
+    {
+      "name": "PayoutReleased",
+      "discriminator": [
+        245,
+        195,
+        37,
+        2,
+        200,
+        70,
+        126,
+        210
+      ]
+    },
+    {
+      "name": "PenaltyApplied",
+      "discriminator": [
+        129,
+        70,
+        75,
+        133,
+        83,
+        87,
+        163,
+        224
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "MathOverflow",
+      "msg": "Math overflow"
+    },
+    {
+      "code": 6001,
+      "name": "InvalidAmount",
+      "msg": "Invalid amount"
+    },
+    {
+      "code": 6002,
+      "name": "InvalidTotalCycles",
+      "msg": "Invalid total cycles"
+    },
+    {
+      "code": 6003,
+      "name": "InvalidGracePeriod",
+      "msg": "Invalid grace period"
+    },
+    {
+      "code": 6004,
+      "name": "CollateralAlreadyDeposited",
+      "msg": "Collateral already deposited"
+    },
+    {
+      "code": 6005,
+      "name": "CollateralRequired",
+      "msg": "Collateral required before joining"
+    },
+    {
+      "code": 6006,
+      "name": "InvalidPayoutPosition",
+      "msg": "Invalid payout position"
+    },
+    {
+      "code": 6007,
+      "name": "MemberNotEligibleForPayout",
+      "msg": "Member not eligible for payout"
+    },
+    {
+      "code": 6008,
+      "name": "PayoutAlreadyReleased",
+      "msg": "Payout already released"
+    },
+    {
+      "code": 6009,
+      "name": "NotCurrentPayoutPosition",
+      "msg": "Not current payout position"
+    },
+    {
+      "code": 6010,
+      "name": "PayoutNotReleasedYet",
+      "msg": "Payout not released yet"
+    },
+    {
+      "code": 6011,
+      "name": "EscrowAlreadyComplete",
+      "msg": "Escrow already complete"
+    },
+    {
+      "code": 6012,
+      "name": "NoRemainingCycles",
+      "msg": "No remaining cycles"
+    },
+    {
+      "code": 6013,
+      "name": "GracePeriodNotElapsed",
+      "msg": "Grace period not elapsed"
+    },
+    {
+      "code": 6014,
+      "name": "AlreadyPaidCurrentCycle",
+      "msg": "Already paid current cycle"
+    },
+    {
+      "code": 6015,
+      "name": "CycleNotComplete",
+      "msg": "Cycle is not complete"
+    },
+    {
+      "code": 6016,
+      "name": "CommitteeNotCompleted",
+      "msg": "Committee is not completed"
+    },
+    {
+      "code": 6017,
+      "name": "MemberRemoved",
+      "msg": "Member removed"
+    },
+    {
+      "code": 6018,
+      "name": "CollateralAlreadyReturned",
+      "msg": "Collateral already returned"
+    }
+  ],
+  "types": [
+    {
+      "name": "CollateralDeposited",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "committee",
+            "type": "pubkey"
+          },
+          {
+            "name": "member",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "CollateralReturned",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "committee",
+            "type": "pubkey"
+          },
+          {
+            "name": "member",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "CollateralVault",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "committee",
+            "type": "pubkey"
+          },
+          {
+            "name": "member",
+            "type": "pubkey"
+          },
+          {
+            "name": "deposited_amount",
+            "type": "u64"
+          },
+          {
+            "name": "is_returned",
+            "type": "bool"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "CommitteeMemberState",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "committee",
+            "type": "pubkey"
+          },
+          {
+            "name": "member",
+            "type": "pubkey"
+          },
+          {
+            "name": "payout_position",
+            "type": "u8"
+          },
+          {
+            "name": "penalty_strikes",
+            "type": "u8"
+          },
+          {
+            "name": "total_penalties_paid",
+            "type": "u64"
+          },
+          {
+            "name": "last_contribution_cycle",
+            "type": "u8"
+          },
+          {
+            "name": "is_eligible_for_payout",
+            "type": "bool"
+          },
+          {
+            "name": "has_received_payout",
+            "type": "bool"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "CommitteeState",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "manager",
+            "type": "pubkey"
+          },
+          {
+            "name": "contribution_amount",
+            "type": "u64"
+          },
+          {
+            "name": "total_cycles",
+            "type": "u8"
+          },
+          {
+            "name": "current_cycle",
+            "type": "u8"
+          },
+          {
+            "name": "current_members",
+            "type": "u8"
+          },
+          {
+            "name": "grace_period_seconds",
+            "type": "i64"
+          },
+          {
+            "name": "next_cycle_due_ts",
+            "type": "i64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "DeferredEscrow",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "committee",
+            "type": "pubkey"
+          },
+          {
+            "name": "member",
+            "type": "pubkey"
+          },
+          {
+            "name": "total_deferred",
+            "type": "u64"
+          },
+          {
+            "name": "released_so_far",
+            "type": "u64"
+          },
+          {
+            "name": "cycles_remaining",
+            "type": "u8"
+          },
+          {
+            "name": "cycles_completed",
+            "type": "u8"
+          },
+          {
+            "name": "is_complete",
+            "type": "bool"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "DeferredReleased",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "committee",
+            "type": "pubkey"
+          },
+          {
+            "name": "member",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount_released",
+            "type": "u64"
+          },
+          {
+            "name": "remaining_deferred",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PayoutReleased",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "committee",
+            "type": "pubkey"
+          },
+          {
+            "name": "member",
+            "type": "pubkey"
+          },
+          {
+            "name": "immediate_amount",
+            "type": "u64"
+          },
+          {
+            "name": "deferred_amount",
+            "type": "u64"
+          },
+          {
+            "name": "cycles_remaining",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PenaltyAction",
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "Warning"
+          },
+          {
+            "name": "Suspend"
+          },
+          {
+            "name": "Remove"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PenaltyApplied",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "committee",
+            "type": "pubkey"
+          },
+          {
+            "name": "member",
+            "type": "pubkey"
+          },
+          {
+            "name": "strike_number",
+            "type": "u8"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          },
+          {
+            "name": "action_taken",
+            "type": {
+              "defined": {
+                "name": "PenaltyAction"
+              }
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -8,4 +8,5 @@ declare module "@env" {
   export const RIZQ_PHANTOM_CONNECT_REDIRECT_URL: string | undefined;
   export const RIZQ_WEB3AUTH_CLIENT_ID: string | undefined;
   export const RIZQ_WEB3AUTH_REDIRECT_URL: string | undefined;
+  export const RIZQ_COMMITTEE_SAFETY_PROGRAM_ID: string | undefined;
 }

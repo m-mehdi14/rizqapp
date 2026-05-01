@@ -8,6 +8,8 @@ type VerifyTxInput = {
   requiredWallet?: string;
   committeePda?: string | null;
   committeeVault?: string | null;
+  /** Extra PDAs (member_state, escrow, collateral, safety committee, …) — tx must reference at least one scope key when non-empty */
+  additionalScopeKeys?: string[] | null;
 };
 
 function normalizeKeySet(keys: string[]): Set<string> {
@@ -48,14 +50,17 @@ export async function verifyConfirmedCommitteeTx(input: VerifyTxInput): Promise<
     }
   }
 
-  const scopeKeys = [input.committeePda, input.committeeVault]
-    .filter((v): v is string => typeof v === "string" && v.trim().length > 0)
-    .map((k) => new PublicKey(k).toBase58());
+  const scopeKeys = [
+    ...[input.committeePda, input.committeeVault].filter(
+      (v): v is string => typeof v === "string" && v.trim().length > 0
+    ),
+    ...(input.additionalScopeKeys ?? []).filter((v) => typeof v === "string" && v.trim().length > 0),
+  ].map((k) => new PublicKey(k).toBase58());
 
   if (scopeKeys.length > 0) {
     const touchesCommitteeScope = scopeKeys.some((key) => keySet.has(key));
     if (!touchesCommitteeScope) {
-      throw new Error("Transaction does not reference committee PDA/vault");
+      throw new Error("Transaction does not reference committee / vault / safety PDAs");
     }
   }
 }

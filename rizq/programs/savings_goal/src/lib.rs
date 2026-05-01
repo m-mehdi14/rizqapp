@@ -1,7 +1,7 @@
 use anchor_lang::prelude::*;
 use anchor_spl::token::{transfer, Mint, Token, TokenAccount, Transfer};
 
-declare_id!("86ToDxAfBiJmnDVZsqES12hoAiRsEmgmqdyKj5FNgLaM");
+declare_id!("CDmiBaaZtT11r6ANAsv4gRVKqKeQdqVJdgcY2CZxUM7U");
 
 pub const GOAL_NAME_MAX: usize = 64;
 

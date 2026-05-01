@@ -14,7 +14,14 @@ import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { CommitteesStackParamList } from "../../navigation/RootNavigator";
 import { colors, spacing } from "../../theme/tokens";
-import { createCommittee } from "../../api/rizqApi";
+import {
+  confirmCommitteeSafetyBootstrap,
+  createCommittee,
+  depositCommitteeCollateral,
+} from "../../api/rizqApi";
+import { useSolanaTransactionSigner } from "../../hooks/useSolanaTransactionSigner";
+import { bootstrapManagerOnChainSafety } from "../../solana/committeeSafetyProgram";
+import { COMMITTEE_SAFETY_PROGRAM_ID } from "../../config";
 import { useAppStore } from "../../store/useAppStore";
 import { StepIndicator } from "./components/StepIndicator";
 import { WizardFooter } from "./components/WizardFooter";
@@ -38,6 +45,7 @@ export function CreateKametiWizardScreen() {
   const wallet = useAppStore((s) => s.wallet);
   const authToken = useAppStore((s) => s.authToken);
   const addCommittee = useAppStore((s) => s.addCommittee);
+  const { signAndSendPrepared } = useSolanaTransactionSigner();
   const { draft, updateDraft, resetDraft } = useCreateKametiStore();
   const [step, setStep] = useState(1);
   const [launchError, setLaunchError] = useState<string | null>(null);
@@ -84,6 +92,58 @@ export function CreateKametiWizardScreen() {
         kycRequired: draft.kycRequired,
         nomineeRequired: draft.nomineeRequired,
       });
+
+      const isRandomPayoutOrder = payoutOrderType === "random";
+      let managerOnChainDepositSig: string | null = null;
+
+      if (
+        !isRandomPayoutOrder &&
+        COMMITTEE_SAFETY_PROGRAM_ID &&
+        wallet &&
+        authToken &&
+        typeof amountPerMember === "number"
+      ) {
+        try {
+          const graceDays = Number(String(draft.gracePeriod).split(" ")[0] ?? 3);
+          const { initializeSig, depositSig, joinSig } = await bootstrapManagerOnChainSafety({
+            managerWalletAddress: wallet,
+            contributionAmountMicro: Math.round(amountPerMember * 1_000_000),
+            totalCycles: draft.maxMembers,
+            gracePeriodDays: graceDays,
+            signAndSendPrepared,
+          });
+          await confirmCommitteeSafetyBootstrap({
+            committeeId: result.committee.id,
+            token: authToken,
+            initializeTxSignature: initializeSig,
+            depositTxSignature: depositSig,
+            joinTxSignature: joinSig,
+          });
+          managerOnChainDepositSig = depositSig;
+        } catch (error) {
+          console.warn("[committee_safety] on-chain bootstrap failed:", error);
+        }
+      }
+
+      /* Same as join flow: backend collateral row must exist for penalties / dashboard.
+         - After on-chain bootstrap: use real deposit tx so verifier matches committee PDAs.
+         - Random payout or no chain: wallet-proof record (mirror-only) like members. */
+      if (wallet && authToken) {
+        const collateralSig =
+          managerOnChainDepositSig ??
+          `wallet-proof-collateral-${Date.now()}-${wallet.replace(/[^a-zA-Z0-9]/g, "").slice(0, 24)}`;
+        try {
+          await depositCommitteeCollateral({
+            committeeId: result.committee.id,
+            txSignature: collateralSig,
+            wallet,
+            authToken,
+          });
+        } catch (error) {
+          console.warn("[collateral] manager collateral record failed:", error);
+        }
+      }
+
       return result;
     },
     onSuccess: async (result) => {

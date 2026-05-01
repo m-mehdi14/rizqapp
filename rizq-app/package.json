@@ -11,6 +11,7 @@
     "test": "jest"
   },
   "dependencies": {
+    "@coral-xyz/anchor": "^0.31.1",
     "@react-native-async-storage/async-storage": "^2.2.0",
     "@react-native-clipboard/clipboard": "^1.16.3",
     "@react-native/new-app-screen": "0.85.2",
@@ -23,6 +24,7 @@
     "@toruslabs/react-native-web-browser": "^1.1.0",
     "@web3auth/react-native-sdk": "^8.1.0",
     "@web3auth/solana-provider": "^9.7.0",
+    "bn.js": "^5.2.1",
     "bs58": "^6.0.0",
     "buffer": "^6.0.3",
     "phosphor-react-native": "^3.0.4",

@@ -131,6 +131,10 @@ export type JoinInvitePreview = {
   penalty_rule: string;
   first_contribution_due_date: string;
   already_joined?: boolean;
+  /** Manager Solana address — required to derive committee_safety PDAs on-chain */
+  manager_wallet?: string | null;
+  /** When `random`, member `join_committee` on-chain is skipped (positions are shuffled in API). */
+  payout_order_type?: string | null;
 };
 
 export type CommitteeContributionRow = {
@@ -160,6 +164,8 @@ export type CommitteeDashboardMember = {
   payout_position: number;
   membership_status: string;
   history: Array<{ cycle: number; status: "paid" | "pending" | "overdue" | "future" }>;
+  /** Present for managers only — used for on-chain penalty txs */
+  wallet_address?: string | null;
 };
 
 export type CommitteeDashboardPayload = {
@@ -177,6 +183,23 @@ export type CommitteeDashboardPayload = {
     invite_code?: string | null;
     is_manager?: boolean;
     current_user_id?: string | null;
+    manager_wallet?: string | null;
+    safety?: {
+      onchain_enabled: boolean;
+      safety_program_id?: string | null;
+      committee_pda: string | null;
+      member_state_pda: string | null;
+      collateral_vault_pda: string | null;
+      deferred_escrow_pda: string | null;
+      penalty_strikes: number;
+      is_eligible_for_payout: boolean;
+      has_received_payout?: boolean;
+      use_on_chain_deferred_contribution?: boolean;
+      use_on_chain_payout_release?: boolean;
+      collateral_deposited_micro_usdc: number;
+      deferred_total_micro_usdc: number;
+      deferred_released_micro_usdc: number;
+    } | null;
   };
   members: CommitteeDashboardMember[];
   payout_schedule: Array<{
@@ -197,6 +220,16 @@ export type CommitteeAnnouncement = {
   message: string;
   created_at: string;
   created_by: string | null;
+};
+
+export type CommitteePenaltyEvent = {
+  id: string;
+  user_id: string;
+  strike_number: number;
+  penalty_amount: number;
+  action_taken: string;
+  tx_signature: string | null;
+  created_at: string;
 };
 
 export type WalletTransactionRow = {
@@ -249,8 +282,9 @@ async function http<T>(path: string, init?: RequestInit): Promise<T> {
       if (!res.ok) {
         let reason = `HTTP ${res.status} for ${path}`;
         try {
-          const errorPayload = (await res.json()) as { error?: string };
+          const errorPayload = (await res.json()) as { error?: string; detail?: string };
           if (errorPayload?.error) reason = errorPayload.error;
+          if (errorPayload?.detail) reason = `${reason} (${errorPayload.detail})`;
         } catch {
           // ignore JSON parse failures for non-JSON error payloads
         }
@@ -595,6 +629,34 @@ export async function joinCommittee(input: {
       );
 }
 
+export async function depositCommitteeCollateral(input: {
+  committeeId: string;
+  txSignature: string;
+  wallet?: string;
+  authToken?: string;
+}): Promise<{ committee_id: string; deposited_amount: number }> {
+  const body: Record<string, unknown> = {
+    tx_signature: input.txSignature,
+  };
+  if (input.wallet) body.wallet_address = input.wallet;
+  return input.authToken
+    ? await authHttp<{ committee_id: string; deposited_amount: number }>(
+        `/api/committees/${encodeURIComponent(input.committeeId)}/collateral/deposit`,
+        input.authToken,
+        {
+          method: "POST",
+          body: JSON.stringify(body),
+        }
+      )
+    : await http<{ committee_id: string; deposited_amount: number }>(
+        `/api/committees/${encodeURIComponent(input.committeeId)}/collateral/deposit`,
+        {
+          method: "POST",
+          body: JSON.stringify(body),
+        }
+      );
+}
+
 // Legacy alias kept while old screens still call fetchGoals.
 export async function fetchGoals(wallet: string): Promise<Goal[]> {
   try {
@@ -857,11 +919,86 @@ export async function sendCommitteeAnnouncement(input: {
   });
 }
 
+export async function fetchCommitteeJoinSlot(input: {
+  committeeId: string;
+  token: string;
+}): Promise<{ payout_position: number }> {
+  return await authHttp<{ payout_position: number }>(
+    `/api/committees/${encodeURIComponent(input.committeeId)}/join-slot`,
+    input.token
+  );
+}
+
+export async function confirmCommitteeSafetyBootstrap(input: {
+  committeeId: string;
+  token: string;
+  initializeTxSignature?: string;
+  depositTxSignature?: string;
+  joinTxSignature?: string;
+}): Promise<{ ok: boolean; safety_committee_pda?: string; recorded_tx?: string }> {
+  return await authHttp<{ ok: boolean; safety_committee_pda?: string; recorded_tx?: string }>(
+    `/api/committees/${encodeURIComponent(input.committeeId)}/safety/bootstrap`,
+    input.token,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        initialize_tx_signature: input.initializeTxSignature ?? null,
+        deposit_tx_signature: input.depositTxSignature ?? null,
+        join_tx_signature: input.joinTxSignature ?? null,
+      }),
+    }
+  );
+}
+
+export async function enforceCommitteePenalties(input: {
+  committeeId: string;
+  token: string;
+}): Promise<{ ok: boolean; overdue: boolean; checked_members: number; penalized_members: number }> {
+  return await authHttp<{
+    ok: boolean;
+    overdue: boolean;
+    checked_members: number;
+    penalized_members: number;
+  }>(`/api/committees/${encodeURIComponent(input.committeeId)}/penalties/enforce`, input.token, {
+    method: "POST",
+  });
+}
+
+/** After signing `process_missed_payment` as manager (fee payer), sync DB strike row to match chain. */
+export async function recordCommitteePenaltyOnChain(input: {
+  committeeId: string;
+  token: string;
+  targetWallet: string;
+  txSignature: string;
+}): Promise<{
+  ok: boolean;
+  strike_number?: number;
+  penalty_amount_micro_usdc?: number;
+}> {
+  return await authHttp(`/api/committees/${encodeURIComponent(input.committeeId)}/penalties/on-chain`, input.token, {
+    method: "POST",
+    body: JSON.stringify({
+      wallet_address: input.targetWallet,
+      tx_signature: input.txSignature,
+    }),
+  });
+}
+
 export async function fetchCommitteeAnnouncements(
   committeeId: string
 ): Promise<CommitteeAnnouncement[]> {
   return await http<CommitteeAnnouncement[]>(
     `/api/committees/${encodeURIComponent(committeeId)}/announcements`
+  );
+}
+
+export async function fetchCommitteePenaltyEvents(
+  committeeId: string,
+  token: string
+): Promise<CommitteePenaltyEvent[]> {
+  return await authHttp<CommitteePenaltyEvent[]>(
+    `/api/committees/${encodeURIComponent(committeeId)}/penalties`,
+    token
   );
 }
 

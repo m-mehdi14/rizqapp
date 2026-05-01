@@ -126,6 +126,33 @@ export function useWeb3AuthWallet() {
     }
   }, [setWalletConnection, walletProvider]);
 
+  const signAndSendPreparedTransaction = useCallback(
+    async (tx: Transaction): Promise<string> => {
+      if (!isConfigured) {
+        throw new Error("Web3Auth is not configured.");
+      }
+      if (!hasValidRedirect) {
+        throw new Error("Web3Auth redirect URL is invalid.");
+      }
+      const client = await getWeb3AuthClient(getRedirectCandidates()[0] ?? "com.rizqapp://auth");
+      if (!client.provider) {
+        throw new Error("Web3Auth wallet session expired. Please reconnect.");
+      }
+      const solanaWallet = new SolanaWallet(client.provider);
+      const { signature } = await solanaWallet.signAndSendTransaction(tx);
+      await connection.confirmTransaction(
+        {
+          signature,
+          blockhash: tx.recentBlockhash!,
+          lastValidBlockHeight: tx.lastValidBlockHeight!,
+        },
+        "confirmed"
+      );
+      return signature;
+    },
+    [getRedirectCandidates, hasValidRedirect, isConfigured]
+  );
+
   const signAndSendDevnetProofTx = useCallback(
     async (walletAddress: string): Promise<string> => {
       if (!isConfigured) {
@@ -191,12 +218,14 @@ export function useWeb3AuthWallet() {
       connectWeb3AuthWallet,
       logoutWeb3AuthWallet,
       signAndSendDevnetProofTx,
+      signAndSendPreparedTransaction,
     }),
     [
       connectWeb3AuthWallet,
       isConfigured,
       logoutWeb3AuthWallet,
       signAndSendDevnetProofTx,
+      signAndSendPreparedTransaction,
       wallet,
       walletProvider,
     ]
