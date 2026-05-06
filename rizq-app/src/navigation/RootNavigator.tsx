@@ -35,6 +35,7 @@ import {
   SettingsCommunityScreen,
   SettingsHubScreen,
   SettingsKycStatusScreen,
+  SettingsNomineeClaimsScreen,
   SettingsNomineeScreen,
   SettingsNotificationsScreen,
   SettingsPreferencesScreen,
@@ -179,10 +180,10 @@ const FLOATING_TAB_BAR_STYLE = {
   marginHorizontal: 20,
   marginBottom: 16,
   borderRadius: 32,
-  backgroundColor: "rgba(13,27,46,0.92)",
+  backgroundColor: "rgba(10,51,40,0.94)",
   borderTopWidth: 0,
   borderWidth: 1,
-  borderColor: "rgba(255,255,255,0.08)",
+  borderColor: "rgba(255,255,255,0.22)",
   height: 68,
   paddingTop: 8,
 };
@@ -261,6 +262,7 @@ function ProfileStackNav() {
       <ProfileStack.Screen name="SettingsPreferences" component={SettingsPreferencesScreen} />
       <ProfileStack.Screen name="SettingsSecurity" component={SettingsSecurityScreen} />
       <ProfileStack.Screen name="SettingsCommunity" component={SettingsCommunityScreen} />
+      <ProfileStack.Screen name="SettingsNomineeClaims" component={SettingsNomineeClaimsScreen} />
       <ProfileStack.Screen name="SettingsSupport" component={SettingsSupportScreen} />
       <ProfileStack.Screen name="SettingsAbout" component={SettingsAboutScreen} />
       <ProfileStack.Screen name="WalletMain" component={WalletMainScreen} />
@@ -285,7 +287,7 @@ function MainTabs() {
         tabBarHideOnKeyboard: true,
         tabBarStyle: FLOATING_TAB_BAR_STYLE,
         tabBarActiveTintColor: colors.brandGreen,
-        tabBarInactiveTintColor: colors.textSecondary,
+        tabBarInactiveTintColor: "rgba(255,255,255,0.85)",
         tabBarLabelStyle: { fontSize: 11, fontWeight: "600" },
       }}
     >

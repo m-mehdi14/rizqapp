@@ -10,9 +10,9 @@ type Props = {
 };
 
 const variantGradient: Record<NonNullable<Props["variant"]>, string[]> = {
-  default: ["#0D2040", colors.bgBase],
-  ai: ["#1A0D40", colors.bgBase],
-  celebration: ["#2B1B00", colors.bgBase],
+  default: ["#EDE4D6", colors.bgBase],
+  ai: ["#E4EEE9", colors.bgBase],
+  celebration: ["#EFE7DA", colors.bgBase],
 };
 
 export function ScreenShell({ children, variant = "default", contentStyle }: Props) {
@@ -30,5 +30,5 @@ export function ScreenShell({ children, variant = "default", contentStyle }: Pro
 
 const styles = StyleSheet.create({
   bg: { flex: 1 },
-  overlay: { flex: 1, backgroundColor: "rgba(8,14,26,0.72)" },
+  overlay: { flex: 1, backgroundColor: "rgba(245,240,232,0.72)" },
 });

@@ -23,5 +23,5 @@ const styles = StyleSheet.create({
     letterSpacing: 1.2,
     fontWeight: "600",
   },
-  line: { flex: 1, height: 1, backgroundColor: "rgba(255,255,255,0.08)" },
+  line: { flex: 1, height: 1, backgroundColor: "rgba(10,51,40,0.14)" },
 });

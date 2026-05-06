@@ -66,8 +66,8 @@ export function ProfileMainScreen() {
       <Pressable style={styles.primaryBtn} onPress={() => nav.navigate("SettingsMain")}>
         <Text style={styles.primaryText}>Open Settings</Text>
       </Pressable>
-      <Pressable style={styles.secondaryBtn} onPress={() => nav.navigate("ProLanding")}>
-        <Text style={styles.secondaryText}>Rizq Pro</Text>
+      <Pressable style={styles.proBtn} onPress={() => nav.navigate("ProLanding")}>
+        <Text style={styles.proText}>Rizq Pro</Text>
       </Pressable>
     </Layout>
   );
@@ -340,6 +340,16 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   secondaryText: { color: colors.textPrimary, fontSize: typography.bodySmall, fontWeight: "600" },
+  proBtn: {
+    minHeight: 44,
+    borderRadius: radii.button,
+    borderWidth: 1,
+    borderColor: "rgba(10,51,40,0.22)",
+    backgroundColor: colors.info,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  proText: { color: colors.textInverse, fontSize: typography.bodySmall, fontWeight: "700" },
   card: { padding: 14, gap: 10 },
   sectionRow: { gap: 4, paddingBottom: 8, borderBottomWidth: 1, borderBottomColor: "rgba(255,255,255,0.06)" },
   sectionTitle: { color: colors.textPrimary, fontSize: typography.body, fontWeight: "700" },

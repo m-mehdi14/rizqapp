@@ -1,6 +1,6 @@
 import React from "react";
 import { View, StyleSheet, Text } from "react-native";
-import { colors, radii } from "../theme/tokens";
+import { a11y, colors, radii } from "../theme/tokens";
 
 type Props = { yesTotal: number; noTotal: number };
 
@@ -32,8 +32,8 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     flexDirection: "row",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
-    backgroundColor: "rgba(255,255,255,0.06)",
+    borderColor: a11y.mediumContrastBorder,
+    backgroundColor: "rgba(10,51,40,0.05)",
   },
   yes: { height: "100%", backgroundColor: colors.brandGreen },
   no: { height: "100%", backgroundColor: "#FF7B8A" },

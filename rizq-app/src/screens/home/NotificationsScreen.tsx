@@ -161,8 +161,8 @@ const styles = StyleSheet.create({
   card: {
     borderRadius: radii.card,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.12)",
-    backgroundColor: "rgba(255,255,255,0.04)",
+    borderColor: "rgba(10,51,40,0.16)",
+    backgroundColor: "rgba(10,51,40,0.04)",
     paddingHorizontal: 12,
     paddingVertical: 10,
     gap: 4,
@@ -176,8 +176,8 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255,179,0,0.11)",
   },
   cardInfo: {
-    borderColor: "rgba(92,173,255,0.45)",
-    backgroundColor: "rgba(92,173,255,0.11)",
+    borderColor: "rgba(10,51,40,0.28)",
+    backgroundColor: "rgba(10,51,40,0.08)",
   },
   itemTitle: { color: colors.textPrimary, fontSize: typography.bodySmall, fontWeight: "700" },
   itemMessage: { color: colors.textPrimary, fontSize: typography.caption, lineHeight: 18 },

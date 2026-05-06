@@ -71,9 +71,9 @@ const styles = StyleSheet.create({
   track: {
     height: 10,
     borderRadius: 5,
-    backgroundColor: "rgba(255,255,255,0.08)",
+    backgroundColor: "rgba(10,51,40,0.08)",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.06)",
+    borderColor: "rgba(10,51,40,0.12)",
     overflow: "hidden",
     justifyContent: "center",
   },

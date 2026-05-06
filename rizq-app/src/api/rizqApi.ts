@@ -197,6 +197,8 @@ export type CommitteeDashboardPayload = {
       use_on_chain_deferred_contribution?: boolean;
       use_on_chain_payout_release?: boolean;
       collateral_deposited_micro_usdc: number;
+      collateral_source?: "on_chain_tx" | "wallet_proof" | null;
+      collateral_tx_signature?: string | null;
       deferred_total_micro_usdc: number;
       deferred_released_micro_usdc: number;
     } | null;
@@ -212,6 +214,44 @@ export type CommitteeDashboardPayload = {
   }>;
   payment_matrix: Array<Array<"paid" | "pending" | "overdue" | "future">>;
   cycle_range: number[];
+};
+
+export type WelfareLedgerEntry = {
+  id: string;
+  committee_id: string;
+  committee_name: string;
+  amount_micro_usdc: number;
+  tx_signature: string;
+  proof_url: string;
+  reason: string;
+  created_at: string;
+};
+
+export type WelfareLedgerPayload = {
+  entries: WelfareLedgerEntry[];
+  totals: {
+    total_amount_micro_usdc: number;
+    transfer_count: number;
+  };
+  grouped_by_committee: Array<{
+    committee_id: string;
+    committee_name: string;
+    total_amount_micro_usdc: number;
+    transfer_count: number;
+  }>;
+};
+
+export type NomineeClaimRow = {
+  id: string;
+  committee_id: string;
+  amount_micro_usdc: number;
+  status: "pending" | "claimed" | "expired";
+  notified_at: string;
+  claimed_at: string | null;
+  expires_at: string | null;
+  tx_signature: string | null;
+  nominee_name: string | null;
+  nominee_phone: string | null;
 };
 
 export type CommitteeAnnouncement = {
@@ -847,7 +887,7 @@ export async function reorderCommitteePayout(input: {
 export async function applyCommitteeMemberAction(input: {
   committeeId: string;
   memberId: string;
-  action: "suspend" | "activate" | "remove";
+  action: "suspend" | "activate" | "remove" | "deceased";
   token: string;
 }): Promise<void> {
   await authHttp(
@@ -858,6 +898,50 @@ export async function applyCommitteeMemberAction(input: {
       body: JSON.stringify({ action: input.action }),
     }
   );
+}
+
+export async function fetchWelfareLedger(input?: {
+  committeeId?: string;
+  source?: "all" | "nominee_expired" | "penalty" | "deceased_fallback";
+  limit?: number;
+  fromIso?: string;
+  toIso?: string;
+}): Promise<WelfareLedgerPayload> {
+  const params = new URLSearchParams();
+  if (input?.committeeId) params.set("committee_id", input.committeeId);
+  if (input?.source) params.set("source", input.source);
+  if (input?.limit != null) params.set("limit", String(input.limit));
+  if (input?.fromIso) params.set("from", input.fromIso);
+  if (input?.toIso) params.set("to", input.toIso);
+  const q = params.toString();
+  const payload = await http<WelfareLedgerPayload>(`/api/welfare/ledger${q ? `?${q}` : ""}`);
+  return {
+    entries: payload.entries ?? [],
+    totals: payload.totals ?? { total_amount_micro_usdc: 0, transfer_count: 0 },
+    grouped_by_committee: payload.grouped_by_committee ?? [],
+  };
+}
+
+export async function fetchNomineeClaims(input?: {
+  committeeId?: string;
+  status?: "pending" | "claimed" | "expired";
+}): Promise<NomineeClaimRow[]> {
+  const params = new URLSearchParams();
+  if (input?.committeeId) params.set("committee_id", input.committeeId);
+  if (input?.status) params.set("status", input.status);
+  const q = params.toString();
+  const payload = await http<{ claims: NomineeClaimRow[] }>(`/api/nominees/claims${q ? `?${q}` : ""}`);
+  return payload.claims ?? [];
+}
+
+export async function claimNomineeClaim(input: {
+  claimId: string;
+  txSignature: string;
+}): Promise<void> {
+  await http(`/api/nominees/claims/${encodeURIComponent(input.claimId)}/claim`, {
+    method: "POST",
+    body: JSON.stringify({ tx_signature: input.txSignature }),
+  });
 }
 
 export async function updateCommitteeStatus(input: {
@@ -1040,4 +1124,18 @@ export async function fetchWalletTransactions(walletAddress: string): Promise<Wa
   return await http<WalletTransactionRow[]>(
     `/api/committees/wallet/${encodeURIComponent(walletAddress)}/transactions`
   );
+}
+
+export async function fetchWalletBalanceSummary(walletAddress: string): Promise<{
+  contributed_micro_usdc: number;
+  received_micro_usdc: number;
+  locked_micro_usdc: number;
+  pending_payout_micro_usdc: number;
+}> {
+  return await http<{
+    contributed_micro_usdc: number;
+    received_micro_usdc: number;
+    locked_micro_usdc: number;
+    pending_payout_micro_usdc: number;
+  }>(`/api/committees/wallet/${encodeURIComponent(walletAddress)}/balance-summary`);
 }

@@ -1,20 +1,24 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
+  Alert,
   ActivityIndicator,
   FlatList,
   KeyboardAvoidingView,
   Platform,
   Pressable,
   SafeAreaView,
+  Share,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from "react-native";
+import Clipboard from "@react-native-clipboard/clipboard";
 import { useNavigation } from "@react-navigation/native";
 import type { NavigationProp, ParamListBase } from "@react-navigation/native";
 import { ChartLineUp, ChatCircleText, Sparkle } from "phosphor-react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { GlassCard } from "../../components/GlassCard";
 import { ScreenShell } from "../../components/ScreenShell";
 import { colors, radii, spacing, typography } from "../../theme/tokens";
@@ -28,7 +32,20 @@ import {
 import { useAppStore } from "../../store/useAppStore";
 
 const FLOATING_TAB_BAR_CLEARANCE = 108;
-const CHAT_INPUT_CLEARANCE = 84;
+
+function renderInlineMarkdown(text: string) {
+  const parts = text.split(/(\*\*[^*]+\*\*)/g).filter((part) => part.length > 0);
+  return parts.map((part, index) => {
+    if (part.startsWith("**") && part.endsWith("**") && part.length > 4) {
+      return (
+        <Text key={`md-bold-${index}`} style={styles.chatMessageBold}>
+          {part.slice(2, -2)}
+        </Text>
+      );
+    }
+    return <Text key={`md-plain-${index}`}>{part}</Text>;
+  });
+}
 
 function Layout({
   title,
@@ -70,16 +87,20 @@ export function AiMainScreen() {
       title="Rizq AI Coach"
       subtitle="Weekly guidance powered by your committee context, payment behavior, and wallet trends."
     >
-      <GlassCard style={styles.messageCard}>
+      <GlassCard style={styles.aiHeroCard}>
         <View style={styles.row}>
-          <Sparkle color={colors.brandPurple} size={18} />
-          <Text style={styles.cardTitle}>This week message</Text>
+          <Sparkle color={colors.brandPurple} size={20} />
+          <Text style={styles.cardTitle}>This week AI focus</Text>
         </View>
         <Text style={styles.cardMessageText}>
           {upcomingCommittee
             ? `Aap ki "${upcomingCommittee.name}" committee pe focus rakhein. Due date se 24 ghantay pehle payment plan karein, score aur trust dono strong rahenge.`
             : "Committee join/create karte hi AI personalized weekly plan aur due-date reminders dega."}
         </Text>
+        <View style={styles.row}>
+          <Text style={styles.heroPill}>Bilingual coaching</Text>
+          <Text style={styles.heroPill}>Live committee context</Text>
+        </View>
       </GlassCard>
 
       <GlassCard style={styles.healthCard}>
@@ -102,6 +123,7 @@ export function AiMainScreen() {
       </GlassCard>
 
       <View style={styles.promptWrap}>
+        <Text style={styles.promptHeading}>Quick prompts</Text>
         {[
           "When is my next committee payment?",
           "How much will I receive this cycle?",
@@ -124,6 +146,7 @@ export function AiMainScreen() {
 }
 
 export function AiChatScreen() {
+  const insets = useSafeAreaInsets();
   const GENERAL_CHAT_ID = "__general__";
   const userId = useAppStore((s) => s.userId);
   const committees = useAppStore((s) => s.committees);
@@ -131,6 +154,9 @@ export function AiChatScreen() {
     committees[0]?.id ?? GENERAL_CHAT_ID
   );
   const [draft, setDraft] = useState("");
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+  const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
+  const [lastFailedPrompt, setLastFailedPrompt] = useState<string | null>(null);
   const [messages, setMessages] = useState<
     Array<{ id: string; role: "user" | "ai"; body: string; time: string }>
   >([
@@ -173,6 +199,7 @@ export function AiChatScreen() {
         committees.find((committee) => committee.id === selectedCommitteeId)?.name ??
         "selected committee";
       try {
+        setIsLoadingHistory(true);
         const rows = await fetchAiChatHistory({
           userId,
           committeeId: isGeneral ? null : selectedCommitteeId,
@@ -203,6 +230,7 @@ export function AiChatScreen() {
           ]);
         }
         setDraft("");
+        setLastSyncedAt(new Date().toLocaleTimeString());
         setTimeout(() => listRef.current?.scrollToEnd({ animated: false }), 0);
       } catch {
         if (cancelled) return;
@@ -214,6 +242,8 @@ export function AiChatScreen() {
             time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
           },
         ]);
+      } finally {
+        if (!cancelled) setIsLoadingHistory(false);
       }
     };
     loadHistory();
@@ -240,6 +270,7 @@ export function AiChatScreen() {
       });
     },
     onSuccess: (payload) => {
+      setLastFailedPrompt(null);
       setMessages((prev) => [
         ...prev,
         {
@@ -252,6 +283,8 @@ export function AiChatScreen() {
       setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 50);
     },
     onError: (error) => {
+      const failed = draft.trim();
+      if (failed.length > 0) setLastFailedPrompt(failed);
       const text = error instanceof Error ? error.message : "AI response unavailable. Please retry.";
       setMessages((prev) => [
         ...prev,
@@ -267,6 +300,22 @@ export function AiChatScreen() {
   });
 
   const canSend = draft.trim().length > 0 && !sendMutation.isPending;
+  const selectedCommittee = committees.find((c) => c.id === selectedCommitteeId);
+  const quickPrompts = useMemo(() => {
+    if (selectedCommitteeId === GENERAL_CHAT_ID) {
+      return [
+        "Give me a weekly savings plan.",
+        "How can I improve my Rizq score?",
+        "Best habits to avoid missed payments?",
+      ];
+    }
+    const name = selectedCommittee?.name ?? "my committee";
+    return [
+      `Am I on track in ${name}?`,
+      `When is my next payment due for ${name}?`,
+      `What payout conditions are pending in ${name}?`,
+    ];
+  }, [selectedCommittee?.name, selectedCommitteeId]);
   const headerSubtitle = useMemo(() => {
     if (!userId) return "Login required for AI chat.";
     if (selectedCommitteeId === GENERAL_CHAT_ID) return "General AI mode (no committee rules).";
@@ -299,12 +348,15 @@ export function AiChatScreen() {
       <SafeAreaView style={{ flex: 1 }}>
         <KeyboardAvoidingView
           style={styles.chatScreenWrap}
-          behavior={Platform.OS === "ios" ? "padding" : undefined}
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
           keyboardVerticalOffset={Platform.OS === "ios" ? 8 : 0}
         >
           <View style={styles.chatTopArea}>
             <Text style={styles.title}>AI Chat</Text>
             <Text style={styles.subtitle}>{headerSubtitle}</Text>
+            <Text style={styles.chatHeaderMeta}>
+              {lastSyncedAt ? `Last synced: ${lastSyncedAt}` : "Syncing chat context..."}
+            </Text>
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
@@ -376,7 +428,8 @@ export function AiChatScreen() {
                       message.role === "user" ? styles.messageBubbleUser : styles.messageBubbleAi,
                     ]}
                   >
-                    <Text style={styles.chatMessageText}>{message.body}</Text>
+                    <Text style={styles.messageRoleLabel}>{message.role === "user" ? "You" : "Rizq AI"}</Text>
+                    <Text style={styles.chatMessageText}>{renderInlineMarkdown(message.body)}</Text>
                   </View>
                   <Text
                     style={[
@@ -386,10 +439,36 @@ export function AiChatScreen() {
                   >
                     {message.time}
                   </Text>
+                  <View style={styles.messageActions}>
+                    <Pressable
+                      onPress={() => {
+                        Clipboard.setString(message.body);
+                        Alert.alert("Copied", "Message copied.");
+                      }}
+                    >
+                      <Text style={styles.messageActionText}>Copy</Text>
+                    </Pressable>
+                    <Pressable
+                      onPress={() =>
+                        Share.share({
+                          title: message.role === "ai" ? "Rizq AI message" : "My message",
+                          message: message.body,
+                        }).catch(() => undefined)
+                      }
+                    >
+                      <Text style={styles.messageActionText}>Share</Text>
+                    </Pressable>
+                  </View>
                 </View>
               )}
             />
 
+            {isLoadingHistory ? (
+              <View style={styles.typingRow}>
+                <ActivityIndicator size="small" color={colors.brandGreen} />
+                <Text style={styles.chatHeaderMeta}>Loading history...</Text>
+              </View>
+            ) : null}
             {sendMutation.isPending ? (
               <View style={styles.typingRow}>
                 <ActivityIndicator size="small" color={colors.brandPurple} />
@@ -398,7 +477,7 @@ export function AiChatScreen() {
             ) : null}
           </GlassCard>
 
-          <View style={styles.inputRowPinned}>
+          <View style={[styles.inputRowPinned, { paddingBottom: Math.max(insets.bottom, 8) }]}>
             <TextInput
               value={draft}
               onChangeText={setDraft}
@@ -416,6 +495,25 @@ export function AiChatScreen() {
               <ChatCircleText color={colors.textInverse} size={20} />
             </Pressable>
           </View>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.quickPromptScroll}
+            contentContainerStyle={styles.quickPromptRow}
+          >
+            {quickPrompts.map((prompt) => (
+              <Pressable key={prompt} style={styles.quickPromptChip} onPress={() => setDraft(prompt)}>
+                <Text style={styles.quickPromptText} numberOfLines={1}>
+                  {prompt}
+                </Text>
+              </Pressable>
+            ))}
+            {lastFailedPrompt ? (
+              <Pressable style={styles.quickPromptChip} onPress={() => sendMutation.mutate(lastFailedPrompt)}>
+                <Text style={styles.quickPromptText}>Retry last failed</Text>
+              </Pressable>
+            ) : null}
+          </ScrollView>
         </KeyboardAvoidingView>
       </SafeAreaView>
     </ScreenShell>
@@ -433,6 +531,23 @@ export function RizqScoreScreen() {
   const score = scoreQuery.data?.score ?? 0;
   const trend30d = scoreQuery.data?.trend_30d ?? 0;
   const breakdown = scoreQuery.data?.breakdown;
+  const shareScoreCard = async () => {
+    const card = [
+      "Rizq Score Card",
+      `Score: ${score}/1000`,
+      `30-day trend: ${trend30d >= 0 ? `+${trend30d}` : trend30d}`,
+      `On-time payments: ${breakdown?.payments_on_time ?? 0}`,
+      `Committees completed: ${breakdown?.committees_completed ?? 0}`,
+      `Nominee profile: ${breakdown?.nominee_added ?? 0}`,
+      `Account age: ${breakdown?.account_age ?? 0}`,
+      `Consistency: ${breakdown?.committee_consistency ?? 0}`,
+    ].join("\n");
+    await Share.share({
+      title: "My Rizq Score",
+      message: card,
+    });
+  };
+
   return (
     <Layout
       title="Rizq Score"
@@ -443,6 +558,7 @@ export function RizqScoreScreen() {
         <Text style={styles.scoreSub}>
           {trend30d >= 0 ? `+${trend30d}` : trend30d} in last 30 days
         </Text>
+        <Text style={styles.scoreCaption}>Reliability index for committees and payouts.</Text>
       </GlassCard>
       <GlassCard style={styles.healthCard}>
         <View style={styles.row}>
@@ -459,7 +575,7 @@ export function RizqScoreScreen() {
       {scoreQuery.isError ? (
         <Text style={[styles.secondaryBtnText, { color: colors.danger }]}>Could not load Rizq Score.</Text>
       ) : null}
-      <Pressable style={styles.secondaryBtn}>
+      <Pressable style={styles.secondaryBtn} onPress={shareScoreCard}>
         <Text style={styles.secondaryBtnText}>Share score card</Text>
       </Pressable>
     </Layout>
@@ -505,14 +621,32 @@ const styles = StyleSheet.create({
   title: { color: colors.textPrimary, fontSize: typography.h1, fontWeight: "800" },
   subtitle: { color: colors.textSecondary, fontSize: typography.bodySmall, lineHeight: 21 },
   row: { flexDirection: "row", alignItems: "center", gap: 8 },
-  messageCard: { padding: 14, gap: 9 },
+  aiHeroCard: {
+    padding: 14,
+    gap: 9,
+    borderWidth: 1,
+    borderColor: "rgba(167,139,250,0.35)",
+    backgroundColor: "rgba(167,139,250,0.08)",
+  },
   cardTitle: { color: colors.textPrimary, fontSize: typography.body, fontWeight: "700" },
   cardMessageText: { color: colors.textPrimary, fontSize: typography.bodySmall, lineHeight: 22 },
+  heroPill: {
+    borderWidth: 1,
+    borderColor: "rgba(10,51,40,0.2)",
+    backgroundColor: "rgba(10,51,40,0.04)",
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    color: colors.textSecondary,
+    fontSize: 11,
+    fontWeight: "700",
+  },
   healthCard: { padding: 14, gap: 8 },
   healthRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 10 },
   healthName: { color: colors.textSecondary, fontSize: typography.bodySmall, flex: 1 },
   healthState: { color: colors.textPrimary, fontSize: typography.caption, fontWeight: "700" },
   promptWrap: { gap: 7 },
+  promptHeading: { color: colors.textSecondary, fontSize: typography.caption, fontWeight: "700", textTransform: "uppercase" },
   promptChip: {
     borderRadius: 999,
     borderWidth: 1,
@@ -529,13 +663,13 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  primaryBtnText: { color: colors.textPrimary, fontSize: typography.body, fontWeight: "700" },
+  primaryBtnText: { color: colors.textInverse, fontSize: typography.body, fontWeight: "700" },
   secondaryBtn: {
     minHeight: 46,
     borderRadius: radii.button,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.16)",
-    backgroundColor: "rgba(255,255,255,0.04)",
+    borderColor: "rgba(10,51,40,0.22)",
+    backgroundColor: "rgba(10,51,40,0.04)",
     alignItems: "center",
     justifyContent: "center",
   },
@@ -552,8 +686,8 @@ const styles = StyleSheet.create({
   committeeChip: {
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.16)",
-    backgroundColor: "rgba(255,255,255,0.04)",
+    borderColor: "rgba(10,51,40,0.2)",
+    backgroundColor: "rgba(10,51,40,0.04)",
     paddingHorizontal: 12,
     paddingVertical: 7,
   },
@@ -569,12 +703,12 @@ const styles = StyleSheet.create({
     padding: 12,
     gap: 10,
     borderWidth: 1,
-    borderColor: "rgba(167,139,250,0.22)",
-    backgroundColor: "rgba(8,15,31,0.64)",
+    borderColor: "rgba(10,51,40,0.2)",
+    backgroundColor: "rgba(255,255,255,0.82)",
   },
   chatHeader: {
     borderBottomWidth: 1,
-    borderBottomColor: "rgba(255,255,255,0.08)",
+    borderBottomColor: "rgba(10,51,40,0.12)",
     paddingBottom: 8,
     gap: 2,
   },
@@ -590,6 +724,14 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     flexShrink: 1,
   },
+  messageRoleLabel: {
+    color: colors.textMuted,
+    fontSize: 10,
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
+    marginBottom: 4,
+    fontWeight: "700",
+  },
   messageBubbleUser: {
     backgroundColor: "rgba(167,139,250,0.22)",
     borderWidth: 1,
@@ -598,8 +740,8 @@ const styles = StyleSheet.create({
   },
   messageBubbleAi: {
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.14)",
-    backgroundColor: "rgba(255,255,255,0.06)",
+    borderColor: "rgba(10,51,40,0.18)",
+    backgroundColor: "rgba(10,51,40,0.05)",
     borderBottomLeftRadius: 4,
   },
   chatMessageText: {
@@ -609,16 +751,19 @@ const styles = StyleSheet.create({
     flexShrink: 1,
     flexWrap: "wrap",
   },
-  messageTime: { color: colors.textMuted, fontSize: 11 },
+  chatMessageBold: {
+    fontWeight: "800",
+  },
+  messageTime: { color: colors.textSecondary, fontSize: 12 },
   messageTimeUser: { textAlign: "right" },
   messageTimeAi: { textAlign: "left" },
+  messageActions: { flexDirection: "row", gap: 10, marginTop: 2 },
+  messageActionText: { color: colors.textSecondary, fontSize: 11, textDecorationLine: "underline" },
   typingRow: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 4, paddingBottom: 2 },
   inputRowPinned: {
     flexDirection: "row",
     gap: 8,
     alignItems: "flex-end",
-    paddingBottom: 4,
-    marginBottom: CHAT_INPUT_CLEARANCE,
   },
   chatInput: {
     flex: 1,
@@ -626,7 +771,7 @@ const styles = StyleSheet.create({
     maxHeight: 132,
     borderRadius: radii.input,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.14)",
+    borderColor: "rgba(10,51,40,0.22)",
     backgroundColor: colors.bgElevated,
     color: colors.textPrimary,
     paddingHorizontal: 12,
@@ -641,6 +786,18 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   sendBtnDisabled: { opacity: 0.45 },
+  quickPromptScroll: { maxHeight: 48 },
+  quickPromptRow: { gap: 8, alignItems: "center", paddingBottom: 4 },
+  quickPromptChip: {
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "rgba(29,158,117,0.35)",
+    backgroundColor: "rgba(29,158,117,0.1)",
+    minHeight: 34,
+    justifyContent: "center",
+    paddingHorizontal: 12,
+  },
+  quickPromptText: { color: colors.textPrimary, fontSize: 12, fontWeight: "600", maxWidth: 240 },
   scoreCard: {
     alignItems: "center",
     paddingVertical: 18,
@@ -651,4 +808,5 @@ const styles = StyleSheet.create({
   },
   scoreValue: { color: colors.brandGreen, fontSize: 48, fontWeight: "900", lineHeight: 54 },
   scoreSub: { color: colors.textSecondary, fontSize: typography.bodySmall },
+  scoreCaption: { color: colors.textMuted, fontSize: typography.caption, marginTop: 2 },
 });

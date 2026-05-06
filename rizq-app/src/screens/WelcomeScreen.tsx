@@ -17,19 +17,19 @@ const SLIDES = [
   {
     title: "Your committee, on-chain.",
     body: "No more lost money. No more trust issues. Smart contracts hold it all.",
-    glow: ["#2B1B00", colors.bgBase],
+    glow: ["#0A3328", colors.bgBase],
     visual: '💬 "Kameti ka paisay kahan hain?"',
   },
   {
     title: "Your members contribute together.",
     body: "Every cycle stays transparent in USDC, with fixed payout order and no middleman risk.",
-    glow: ["#0F2E1F", colors.bgBase],
+    glow: ["#1D9E75", colors.bgBase],
     visual: "👥 10 members · $50 USDC each cycle",
   },
   {
     title: "Your personal savings coach.",
     body: "Bilingual. Weekly. Reads your on-chain data. Knows your squad.",
-    glow: ["#1A0D40", colors.bgBase],
+    glow: ["#1B5A47", colors.bgBase],
     visual: '✨ "Bhai, Eid aa rahi hai — coffee skip karo."',
   },
 ];
@@ -116,5 +116,5 @@ const styles = StyleSheet.create({
     borderRadius: radii.button,
     alignItems: "center",
   },
-  ctaText: { color: colors.deepNavy, fontWeight: "700", fontSize: typography.body },
+  ctaText: { color: colors.info, fontWeight: "700", fontSize: typography.body },
 });

@@ -317,7 +317,14 @@ export function OverduePaymentScreen() {
 
 export function PayoutNotificationScreen() {
   const nav = useNavigation<NavigationProp<ParamListBase>>();
+  const authToken = useAppStore((s) => s.authToken);
+  const userId = useAppStore((s) => s.userId);
   const { committee, routeCommitteeId } = useSelectedCommittee();
+  const dashboardQuery = useQuery({
+    queryKey: ["committee-dashboard", committee?.id, "payout-notification"],
+    queryFn: () => fetchCommitteeDashboard(committee!.id, authToken ?? undefined),
+    enabled: !!committee?.id && !!authToken,
+  });
   const historyQuery = useQuery({
     queryKey: ["committee-history", committee?.id],
     queryFn: () => fetchCommitteeHistory(committee?.id as string),
@@ -336,12 +343,36 @@ export function PayoutNotificationScreen() {
   const grossUsdc =
     (cycleContributionMicroUsdc > 0 ? cycleContributionMicroUsdc : fallbackCycleGrossMicroUsdc) /
     1_000_000;
+  const currentCycle =
+    dashboardQuery.data?.committee.current_cycle ?? committee?.currentCycle ?? 1;
+  const activeMembersCount = (dashboardQuery.data?.members ?? []).filter(
+    (m) => m.membership_status === "active"
+  ).length;
+  const paidContributorCount = new Set(
+    (historyQuery.data?.contributions ?? [])
+      .filter((item) => (item.cycle_number ?? 0) === currentCycle)
+      .map((item) => item.user_id)
+  ).size;
+  const currentTurnRow =
+    (dashboardQuery.data?.payout_schedule ?? []).find((row) => row.turn === currentCycle) ?? null;
+  const isCurrentUserTurn =
+    currentTurnRow != null &&
+    (currentTurnRow.is_current_user || Boolean(userId && currentTurnRow.member_id === userId));
+  const poolReady = paidContributorCount >= Math.max(1, activeMembersCount);
+  const payoutReady = isCurrentUserTurn && poolReady;
+  const notReadyReason = !isCurrentUserTurn
+    ? `Not your payout turn yet (cycle ${currentCycle}).`
+    : `Waiting for all active members: ${paidContributorCount}/${Math.max(1, activeMembersCount)} paid.`;
   const grossSolEquivalent =
     (solRateQuery.data ?? 0) > 0 ? grossUsdc / (solRateQuery.data ?? 1) : 0;
   return (
     <Layout
-      title="Payout Available"
-      subtitle="Your cycle payout is ready to claim."
+      title={payoutReady ? "Payout Available" : "Payout Status"}
+      subtitle={
+        payoutReady
+          ? "Your cycle payout is ready to claim."
+          : "Claim unlocks only on your turn and after all active members pay this cycle."
+      }
       variant="celebration"
     >
       <GlassCard style={styles.card}>
@@ -350,13 +381,20 @@ export function PayoutNotificationScreen() {
           label="Gross pool"
           value={`$${grossUsdc.toFixed(2)} USDC${grossSolEquivalent > 0 ? ` (~${grossSolEquivalent.toFixed(4)} SOL)` : ""}`}
         />
-        <Info label="Status" value="Ready to claim" />
+        <Info label="Status" value={payoutReady ? "Ready to claim" : "Not ready yet"} />
       </GlassCard>
+      {!payoutReady ? (
+        <GlassCard style={styles.warningCard}>
+          <WarningCircle color={colors.warning} size={18} />
+          <Text style={styles.warningBody}>{notReadyReason}</Text>
+        </GlassCard>
+      ) : null}
       <Pressable
-        style={styles.primaryBtn}
+        style={[styles.primaryBtn, !payoutReady && styles.primaryBtnDisabled]}
+        disabled={!payoutReady}
         onPress={() => nav.navigate("PayoutClaim", { committeeId: routeCommitteeId })}
       >
-        <Text style={styles.primaryText}>Open Claim Screen</Text>
+        <Text style={styles.primaryText}>{payoutReady ? "Open Claim Screen" : "Claim locked"}</Text>
       </Pressable>
     </Layout>
   );
@@ -404,6 +442,26 @@ export function PayoutClaimScreen() {
   const grossUsdc = grossLamports / 1_000_000;
   const feeUsdc = feeLamports / 1_000_000;
   const netUsdc = netLamports / 1_000_000;
+  const currentCycle =
+    dashboardQuery.data?.committee.current_cycle ?? committee?.currentCycle ?? 1;
+  const activeMembersCount = (dashboardQuery.data?.members ?? []).filter(
+    (m) => m.membership_status === "active"
+  ).length;
+  const paidContributorCount = new Set(
+    (historyQuery.data?.contributions ?? [])
+      .filter((item) => (item.cycle_number ?? 0) === currentCycle)
+      .map((item) => item.user_id)
+  ).size;
+  const currentTurnRow =
+    (dashboardQuery.data?.payout_schedule ?? []).find((row) => row.turn === currentCycle) ?? null;
+  const isCurrentUserTurn =
+    currentTurnRow != null &&
+    (currentTurnRow.is_current_user || Boolean(dashboardQuery.data?.committee.current_user_id && currentTurnRow.member_id === dashboardQuery.data?.committee.current_user_id));
+  const poolReady = paidContributorCount >= Math.max(1, activeMembersCount);
+  const payoutReady = isCurrentUserTurn && poolReady;
+  const payoutLockReason = !isCurrentUserTurn
+    ? `Not your payout turn for cycle ${currentCycle}.`
+    : `Waiting for all active members: ${paidContributorCount}/${Math.max(1, activeMembersCount)} paid.`;
   const grossSolEquivalent =
     (solRateQuery.data ?? 0) > 0 ? grossUsdc / (solRateQuery.data ?? 1) : 0;
   const feeSolEquivalent =
@@ -483,6 +541,12 @@ export function PayoutClaimScreen() {
           </Text>
         </GlassCard>
       ) : null}
+      {!payoutReady ? (
+        <GlassCard style={styles.warningCard}>
+          <WarningCircle color={colors.warning} size={18} />
+          <Text style={styles.warningBody}>{payoutLockReason}</Text>
+        </GlassCard>
+      ) : null}
       {submitError ? <Text style={styles.errorText}>{submitError}</Text> : null}
       <Text style={styles.hintText}>
         {useOnChainRelease
@@ -496,6 +560,7 @@ export function PayoutClaimScreen() {
           !wallet ||
           !committee ||
           !hasEnoughFeeSol ||
+          !payoutReady ||
           (useOnChainRelease && !canSignPrepared)
         }
         onPress={() => claimMutation.mutate()}
@@ -591,7 +656,7 @@ const styles = StyleSheet.create({
     minHeight: 46,
     borderRadius: radii.input,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.2)",
+    borderColor: "rgba(10,51,40,0.22)",
     backgroundColor: colors.bgElevated,
     color: colors.textPrimary,
     paddingHorizontal: 12,
@@ -613,8 +678,8 @@ const styles = StyleSheet.create({
     minHeight: 46,
     borderRadius: radii.button,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.15)",
-    backgroundColor: "rgba(255,255,255,0.03)",
+    borderColor: "rgba(10,51,40,0.2)",
+    backgroundColor: "rgba(10,51,40,0.03)",
     alignItems: "center",
     justifyContent: "center",
   },

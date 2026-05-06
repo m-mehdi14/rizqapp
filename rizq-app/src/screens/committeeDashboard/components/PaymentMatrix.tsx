@@ -1,6 +1,6 @@
 import React from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
-import { colors, typography } from "../../../theme/tokens";
+import { a11y, colors, typography } from "../../../theme/tokens";
 import type { Member, MemberPaymentStatus } from "../store/useCommitteeDashboardStore";
 
 type Props = {
@@ -13,7 +13,7 @@ function cellColor(status: MemberPaymentStatus) {
   if (status === "paid") return "rgba(0,230,118,0.6)";
   if (status === "pending") return "rgba(255,179,0,0.7)";
   if (status === "overdue") return "rgba(255,82,82,0.7)";
-  return "rgba(255,255,255,0.2)";
+  return "rgba(10,51,40,0.2)";
 }
 
 export function PaymentMatrix({ members, matrix, onCellPress }: Props) {
@@ -57,5 +57,5 @@ const styles = StyleSheet.create({
   memberCol: { width: 112 },
   cellHead: { color: colors.textSecondary, fontSize: typography.caption, textAlign: "center" },
   memberName: { color: colors.textPrimary, fontSize: typography.bodySmall, fontWeight: "600" },
-  cell: { width: 30, height: 30, borderRadius: 6, borderWidth: 1, borderColor: "rgba(255,255,255,0.2)" },
+  cell: { width: a11y.smallTapTarget, height: a11y.smallTapTarget, borderRadius: 8, borderWidth: 1, borderColor: a11y.highContrastBorder },
 });

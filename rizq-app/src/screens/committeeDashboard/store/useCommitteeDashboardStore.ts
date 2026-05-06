@@ -19,6 +19,8 @@ export type Committee = {
   paidAt?: string;
   poolCurrentUSDC: number;
   poolTargetUSDC: number;
+  poolProjectedAtMaxUSDC?: number;
+  maxMembersCount?: number;
   paidMembersCount: number;
   totalMembersCount: number;
 };
@@ -76,6 +78,8 @@ const initialCommittee: Committee = {
   hasPaidCurrentCycle: false,
   poolCurrentUSDC: 500,
   poolTargetUSDC: 1000,
+  poolProjectedAtMaxUSDC: 1000,
+  maxMembersCount: 10,
   paidMembersCount: 5,
   totalMembersCount: 10,
 };

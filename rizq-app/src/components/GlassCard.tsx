@@ -1,5 +1,6 @@
 import React from "react";
 import { StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
+import { colors } from "../theme/tokens";
 
 type Props = {
   children: React.ReactNode;
@@ -13,10 +14,10 @@ export function GlassCard({ children, style }: Props) {
 const styles = StyleSheet.create({
   card: {
     borderRadius: 20,
-    backgroundColor: "rgba(255,255,255,0.04)",
+    backgroundColor: colors.bgSurface,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
-    borderTopColor: "rgba(255,255,255,0.15)",
+    borderColor: "rgba(10,51,40,0.16)",
+    borderTopColor: "rgba(255,255,255,0.85)",
     overflow: "hidden",
   },
 });

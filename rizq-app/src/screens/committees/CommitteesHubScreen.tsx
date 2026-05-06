@@ -181,10 +181,10 @@ const styles = StyleSheet.create({
     minHeight: 46,
     borderRadius: radii.button,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.16)",
+    borderColor: "rgba(10,51,40,0.22)",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(255,255,255,0.04)",
+    backgroundColor: "rgba(10,51,40,0.04)",
   },
   ctaPrimary: {
     backgroundColor: colors.brandGreen,

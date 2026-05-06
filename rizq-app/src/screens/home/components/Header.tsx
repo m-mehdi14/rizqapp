@@ -1,7 +1,7 @@
 import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { Bell } from "phosphor-react-native";
-import { colors, radii, typography } from "../../../theme/tokens";
+import { a11y, colors, radii, typography } from "../../../theme/tokens";
 
 type Props = {
   unreadCount: number;
@@ -43,14 +43,14 @@ const styles = StyleSheet.create({
     letterSpacing: 0.3,
   },
   bellButton: {
-    width: 44,
-    height: 44,
+    width: a11y.minTapTarget,
+    height: a11y.minTapTarget,
     borderRadius: radii.chip,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(255,255,255,0.06)",
+    backgroundColor: "rgba(10,51,40,0.05)",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.1)",
+    borderColor: "rgba(10,51,40,0.18)",
   },
   badge: {
     position: "absolute",

@@ -47,7 +47,7 @@ const styles = StyleSheet.create({
   },
   messageInner: {
     borderRadius: 15,
-    backgroundColor: "rgba(8,14,26,0.8)",
+    backgroundColor: "rgba(255,255,255,0.92)",
     padding: spacing.card - 2,
   },
   healthRow: {

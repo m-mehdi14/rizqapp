@@ -218,6 +218,29 @@ async function ensureCommitteeTables() {
     )
   `);
   await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS nominee_claims (
+      id UUID PRIMARY KEY,
+      deceased_user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      nominee_id UUID REFERENCES nominees(id) ON DELETE SET NULL,
+      committee_id UUID NOT NULL REFERENCES committees(id) ON DELETE CASCADE,
+      amount_micro_usdc BIGINT NOT NULL DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'pending',
+      notified_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      claimed_at TIMESTAMPTZ,
+      expires_at TIMESTAMPTZ,
+      tx_signature TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  await prisma.$executeRawUnsafe(`
+    CREATE INDEX IF NOT EXISTS idx_nominee_claims_committee_created
+      ON nominee_claims (committee_id, created_at DESC)
+  `);
+  await prisma.$executeRawUnsafe(`
+    CREATE INDEX IF NOT EXISTS idx_nominee_claims_status_expires
+      ON nominee_claims (status, expires_at)
+  `);
+  await prisma.$executeRawUnsafe(`
     CREATE TABLE IF NOT EXISTS committee_announcements (
       id TEXT PRIMARY KEY,
       committee_id UUID NOT NULL REFERENCES committees(id) ON DELETE CASCADE,
@@ -1556,6 +1579,85 @@ committeesRouter.get("/wallet/:wallet/transactions", async (req, res) => {
   }
 });
 
+committeesRouter.get("/wallet/:wallet/balance-summary", async (req, res) => {
+  try {
+    await ensureCommitteeTables();
+    const prisma = getPrisma();
+    const wallet = String(req.params.wallet).trim();
+    if (!wallet) return res.status(400).json({ error: "wallet is required" });
+
+    const user = await prisma.user.findUnique({
+      where: { wallet_address: wallet },
+      select: { id: true },
+    });
+    if (!user) {
+      return res.json({
+        contributed_micro_usdc: 0,
+        received_micro_usdc: 0,
+        locked_micro_usdc: 0,
+        pending_payout_micro_usdc: 0,
+      });
+    }
+
+    const [contribAgg, payoutAgg, memberships] = await Promise.all([
+      prisma.$queryRawUnsafe<Array<{ total: bigint }>>(
+        `
+        SELECT COALESCE(SUM(amount_micro_usdc), 0) AS total
+        FROM committee_contributions
+        WHERE user_id = $1::uuid
+        `,
+        user.id
+      ),
+      prisma.$queryRawUnsafe<Array<{ total: bigint }>>(
+        `
+        SELECT COALESCE(SUM(amount_micro_usdc), 0) AS total
+        FROM committee_payouts
+        WHERE recipient_user_id = $1::uuid OR recipient_wallet = $2
+        `,
+        user.id,
+        wallet
+      ),
+      prisma.committeeMember.findMany({
+        where: { user_id: user.id, status: { in: ["active", "suspended"] } },
+        select: {
+          has_received: true,
+          payout_position: true,
+          committee: {
+            select: {
+              current_cycle: true,
+              contribution_amount: true,
+              current_members: true,
+              status: true,
+            },
+          },
+        },
+      }),
+    ]);
+
+    const contributed = Number(contribAgg[0]?.total ?? 0);
+    const received = Number(payoutAgg[0]?.total ?? 0);
+    const locked = Math.max(0, contributed - received);
+    const pendingPayoutMicro = memberships.reduce((sum, m) => {
+      const c = m.committee;
+      if (m.has_received) return sum;
+      if ((c.status ?? "").toLowerCase() === "complete") return sum;
+      if ((m.payout_position ?? 0) !== c.current_cycle) return sum;
+      const amount = Number(c.contribution_amount ?? 0) * Math.max(1, Number(c.current_members ?? 1));
+      return sum + Math.max(0, amount);
+    }, 0);
+
+    return res.json({
+      contributed_micro_usdc: contributed,
+      received_micro_usdc: received,
+      locked_micro_usdc: locked,
+      pending_payout_micro_usdc: pendingPayoutMicro,
+    });
+  } catch (e) {
+    console.error(e);
+    return res.status(500).json({ error: "server error" });
+  }
+});
+
 committeesRouter.get("/:id/dashboard", async (req, res) => {
   try {
     await ensureCommitteeTables();
@@ -1672,6 +1774,27 @@ committeesRouter.get("/:id/dashboard", async (req, res) => {
       member_id: member.id,
     }));
     const currentMember = members.find((member) => member.user_id === currentUserId);
+    const currentMemberCollateralRow =
+      currentMember != null
+        ? (
+            await prisma.$queryRawUnsafe<Array<{ tx_signature: string | null }>>(
+              `
+              SELECT tx_signature
+              FROM committee_collateral_vaults
+              WHERE committee_id = $1 AND member_user_id = $2
+              LIMIT 1
+              `,
+              committee.id,
+              currentMember.user_id
+            )
+          )[0] ?? null
+        : null;
+    const collateralTxSignature = currentMemberCollateralRow?.tx_signature?.trim() || null;
+    const collateralSource = collateralTxSignature
+      ? collateralTxSignature.startsWith("wallet-proof-")
+        ? "wallet_proof"
+        : "on_chain_tx"
+      : null;
     const safetyProgramId =
       config.committeeSafetyProgramId && config.committeeSafetyProgramId.trim().length > 0
         ? config.committeeSafetyProgramId.trim()
@@ -1705,6 +1828,8 @@ committeesRouter.get("/:id/dashboard", async (req, res) => {
             Boolean(committee.safety_committee_pda) &&
             payoutTurnMatches,
           collateral_deposited_micro_usdc: Number(currentMember.collateral_deposited ?? 0),
+          collateral_source: collateralSource,
+          collateral_tx_signature: collateralTxSignature,
           deferred_total_micro_usdc: deferredTotal,
           deferred_released_micro_usdc: deferredReleased,
         }
@@ -1807,8 +1932,8 @@ committeesRouter.post("/:id/members/:memberId/action", async (req, res) => {
     const committeeId = String(req.params.id);
     const memberId = String(req.params.memberId);
     const action = String(req.body?.action ?? "").trim().toLowerCase();
-    if (!["suspend", "activate", "remove"].includes(action)) {
-      return res.status(400).json({ error: "action must be suspend, activate, or remove" });
+    if (!["suspend", "activate", "remove", "deceased"].includes(action)) {
+      return res.status(400).json({ error: "action must be suspend, activate, remove, or deceased" });
     }
     try {
       await assertManagerAccess(committeeId, req.headers.authorization);
@@ -1826,6 +1951,108 @@ committeesRouter.post("/:id/members/:memberId/action", async (req, res) => {
           where: { id: committeeId },
           data: { current_members: { decrement: 1 } },
         });
+      });
+    } else if (action === "deceased") {
+      await prisma.$transaction(async (tx) => {
+        const member = await tx.committeeMember.findFirst({
+          where: { id: memberId, committee_id: committeeId },
+          select: { id: true, user_id: true, status: true, total_penalties_paid: true },
+        });
+        if (!member) throw new Error("member not found");
+        if (member.status === "deceased") return;
+
+        const nominee = await tx.nominee.findFirst({
+          where: { user_id: member.user_id },
+          orderBy: [{ is_primary: "desc" }, { created_at: "asc" }],
+          select: { id: true, full_name: true, phone_number: true },
+        });
+
+        const deferredRows = await tx.$queryRawUnsafe<
+          Array<{ total_deferred: bigint; released_so_far: bigint }>
+        >(
+          `
+          SELECT total_deferred, released_so_far
+          FROM committee_deferred_escrows
+          WHERE committee_id = $1 AND member_user_id = $2
+          LIMIT 1
+          `,
+          committeeId,
+          member.user_id
+        );
+        const deferredRemaining = deferredRows[0]
+          ? Math.max(
+              0,
+              Number(deferredRows[0].total_deferred ?? 0) - Number(deferredRows[0].released_so_far ?? 0)
+            )
+          : 0;
+
+        const collateralRows = await tx.$queryRawUnsafe<
+          Array<{ deposited_amount: bigint; is_returned: boolean }>
+        >(
+          `
+          SELECT deposited_amount, is_returned
+          FROM committee_collateral_vaults
+          WHERE committee_id = $1 AND member_user_id = $2
+          LIMIT 1
+          `,
+          committeeId,
+          member.user_id
+        );
+        const collateralRemaining = collateralRows[0] && !collateralRows[0].is_returned
+          ? Math.max(
+              0,
+              Number(collateralRows[0].deposited_amount ?? 0) - Number(member.total_penalties_paid ?? 0)
+            )
+          : 0;
+        const claimAmount = Math.max(0, deferredRemaining + collateralRemaining);
+        const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+
+        await tx.$executeRawUnsafe(
+          `
+          UPDATE committee_members
+          SET status = 'deceased', is_eligible_for_payout = false
+          WHERE id = $1
+          `,
+          member.id
+        );
+        await tx.committee.update({
+          where: { id: committeeId },
+          data: { current_members: { decrement: 1 } },
+        });
+
+        if (nominee) {
+          const claimId = randomUUID();
+          await tx.$executeRawUnsafe(
+            `
+            INSERT INTO nominee_claims
+              (id, deceased_user_id, nominee_id, committee_id, amount_micro_usdc, status, notified_at, expires_at)
+            VALUES
+              ($1, $2, $3, $4, $5, 'pending', NOW(), $6)
+            `,
+            claimId,
+            member.user_id,
+            nominee.id,
+            committeeId,
+            claimAmount,
+            expiresAt
+          );
+          console.log("[nominee-claim] created", {
+            claimId,
+            nominee: nominee.full_name,
+            phone: nominee.phone_number,
+            amount_micro_usdc: claimAmount,
+            expires_at: expiresAt.toISOString(),
+          });
+        } else if (claimAmount > 0) {
+          await tx.welfareTransfer.create({
+            data: {
+              committee_id: committeeId,
+              amount_micro_usdc: BigInt(claimAmount),
+              tx_signature: `wallet-proof-deceased-fallback-${committeeId.slice(0, 8)}-${Date.now()}`,
+              reason: "deceased_no_nominee_fallback",
+            },
+          });
+        }
       });
     } else {
       await prisma.committeeMember.update({

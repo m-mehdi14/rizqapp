@@ -10,7 +10,7 @@ type Props = {
   onClose: () => void;
   onViewPaymentHistory?: (member: Member) => void;
   onSendReminder?: (member: Member) => void;
-  onAction?: (action: "suspend" | "activate" | "remove", member: Member) => void;
+  onAction?: (action: "suspend" | "activate" | "remove" | "deceased", member: Member) => void;
 };
 
 export function MemberActionModal({
@@ -55,6 +55,11 @@ export function MemberActionModal({
                 danger
                 onPress={() => onAction?.("remove", member)}
               />
+              <ActionButton
+                text="Mark as deceased (nominee flow)"
+                danger
+                onPress={() => onAction?.("deceased", member)}
+              />
             </View>
           ) : null}
 
@@ -90,14 +95,14 @@ const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
     justifyContent: "flex-end",
-    backgroundColor: "rgba(8,14,26,0.7)",
+    backgroundColor: "rgba(10,51,40,0.45)",
   },
   sheet: {
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
-    backgroundColor: "#101d31",
+    backgroundColor: colors.bgSurface,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.1)",
+    borderColor: "rgba(10,51,40,0.18)",
     padding: 16,
     gap: 10,
   },
@@ -106,8 +111,8 @@ const styles = StyleSheet.create({
   historyWrap: {
     borderRadius: radii.input,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.1)",
-    backgroundColor: "rgba(255,255,255,0.03)",
+    borderColor: "rgba(10,51,40,0.16)",
+    backgroundColor: "rgba(10,51,40,0.04)",
     padding: 10,
     gap: 6,
   },
@@ -117,10 +122,10 @@ const styles = StyleSheet.create({
     minHeight: 40,
     borderRadius: radii.button,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.18)",
+    borderColor: "rgba(10,51,40,0.22)",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(255,255,255,0.05)",
+    backgroundColor: "rgba(10,51,40,0.03)",
   },
   actionBtnDanger: {
     borderColor: "rgba(255,82,82,0.5)",

@@ -25,8 +25,8 @@ const styles = StyleSheet.create({
   wrap: {
     borderRadius: radii.card,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.09)",
-    backgroundColor: "rgba(255,255,255,0.02)",
+    borderColor: "rgba(10,51,40,0.12)",
+    backgroundColor: "rgba(10,51,40,0.02)",
     overflow: "hidden",
   },
   header: {
@@ -36,7 +36,7 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     paddingHorizontal: 12,
     borderBottomWidth: 1,
-    borderBottomColor: "rgba(255,255,255,0.06)",
+    borderBottomColor: "rgba(10,51,40,0.1)",
   },
   title: { color: colors.textPrimary, fontSize: typography.body, fontWeight: "700" },
   chev: { color: colors.textSecondary, fontSize: typography.h3, fontWeight: "700" },

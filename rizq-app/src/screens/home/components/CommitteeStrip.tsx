@@ -72,7 +72,7 @@ function PlusCard({ onPress }: { onPress: () => void }) {
   return (
     <Pressable accessibilityRole="button" accessibilityLabel="Create or join committee" onPress={onPress}>
       <View style={styles.plusCard}>
-        <Plus color={colors.textPrimary} size={24} weight="bold" />
+        <Plus color={colors.textInverse} size={24} weight="bold" />
       </View>
     </Pressable>
   );
@@ -140,8 +140,8 @@ const styles = StyleSheet.create({
     minHeight: 132,
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.2)",
-    backgroundColor: "rgba(255,255,255,0.06)",
+    borderColor: "rgba(10,51,40,0.28)",
+    backgroundColor: "rgba(10,51,40,0.82)",
     alignItems: "center",
     justifyContent: "center",
   },

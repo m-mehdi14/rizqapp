@@ -15,7 +15,7 @@ import { QuickActions } from "./components/QuickActions";
 import { UrgentActionCard } from "./components/UrgentActionCard";
 import type { BalanceData, CommitteeItem, UrgentAction } from "./types";
 import { useAppStore } from "../../store/useAppStore";
-import { fetchPkrRate, fetchSolUsdcRate, fetchWalletTransactions } from "../../api/rizqApi";
+import { fetchPkrRate, fetchSolUsdcRate, fetchWalletBalanceSummary } from "../../api/rizqApi";
 import { useWeb3AuthWallet } from "../../hooks/useWeb3AuthWallet";
 
 const FLOATING_TAB_BAR_CLEARANCE = 108;
@@ -56,9 +56,9 @@ export function HomeScreen() {
     queryFn: fetchSolUsdcRate,
     refetchInterval: 60_000,
   });
-  const walletTransactionsQuery = useQuery({
-    queryKey: ["wallet-transactions", wallet],
-    queryFn: () => fetchWalletTransactions(wallet as string),
+  const walletSummaryQuery = useQuery({
+    queryKey: ["wallet-balance-summary", wallet],
+    queryFn: () => fetchWalletBalanceSummary(wallet as string),
     enabled: !!wallet,
     refetchInterval: 20_000,
   });
@@ -141,36 +141,28 @@ export function HomeScreen() {
   const unreadCount = liveAlerts.filter((alert) => alert.tone !== "info").length;
 
   const balance: BalanceData = useMemo(() => {
-    const inCommitteesSol = liveCommittees.reduce(
-      (sum, committee) => sum + Math.max(0, committee.savedLamports) / 1_000_000_000,
-      0
-    );
     const totalSol = Math.max(0, solBalanceLamports / 1_000_000_000);
-    const pendingPayoutsSol = liveCommittees
-      .filter((committee) => (committee.status ?? "").toLowerCase().includes("payout"))
-      .reduce(
-        (sum, committee) => sum + Math.max(0, committee.contributionLamports ?? 0) / 1_000_000_000,
-        0
-      );
-    const availableSol = Math.max(0, totalSol - inCommitteesSol);
     const solUsdcRate = solRateQuery.data ?? 0;
-    const netCommitteeUsdc = (walletTransactionsQuery.data ?? []).reduce((sum, row) => {
-      const amountUsdc = Number(row.amount_micro_usdc ?? 0) / 1_000_000;
-      return row.type === "payout" ? sum + amountUsdc : sum - amountUsdc;
-    }, 0);
-    const committeeDeltaSol = solUsdcRate > 0 ? netCommitteeUsdc / solUsdcRate : 0;
-    const adjustedTotalSol = Math.max(0, totalSol + committeeDeltaSol);
+    const summary = walletSummaryQuery.data;
+    const lockedUsdc = Number(summary?.locked_micro_usdc ?? 0) / 1_000_000;
+    const pendingPayoutUsdc = Number(summary?.pending_payout_micro_usdc ?? 0) / 1_000_000;
+    const inCommitteesSol = solUsdcRate > 0 ? lockedUsdc / solUsdcRate : 0;
+    const pendingPayoutsSol = solUsdcRate > 0 ? pendingPayoutUsdc / solUsdcRate : 0;
+    const availableSol = Math.max(0, totalSol - inCommitteesSol);
+    // Keep total aligned with the same live available-wallet basis shown in card rows.
+    // Committee lock/pending values are informative and should not inflate the top total display.
+    const adjustedTotalSol = Math.max(0, availableSol);
     const totalUsdcEquivalent = adjustedTotalSol * solUsdcRate;
     const pkrRate = pkrRateQuery.data ?? 280;
     return {
       totalSol: adjustedTotalSol,
       totalUsdcEquivalent,
-      availableSol: Math.max(0, availableSol + committeeDeltaSol),
+      availableSol,
       inCommitteesSol,
       pendingPayoutsSol,
       pkrEquivalent: totalUsdcEquivalent * pkrRate,
     };
-  }, [liveCommittees, pkrRateQuery.data, solBalanceLamports, solRateQuery.data, walletTransactionsQuery.data]);
+  }, [pkrRateQuery.data, solBalanceLamports, solRateQuery.data, walletSummaryQuery.data]);
 
   const handleConnectEmbeddedWallet = useCallback(async () => {
     if (isConnectingEmbedded) return;
@@ -407,10 +399,10 @@ const styles = StyleSheet.create({
     height: 24,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.3)",
+    borderColor: "rgba(10,51,40,0.24)",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(255,255,255,0.08)",
+    backgroundColor: "rgba(10,51,40,0.05)",
   },
   closeButtonText: {
     color: colors.textPrimary,
@@ -428,18 +420,15 @@ const styles = StyleSheet.create({
     fontSize: typography.bodySmall,
     fontWeight: "700",
   },
-  walletErrorText: {
-    color: "#ffd1d1",
-    fontSize: typography.caption,
-  },
+  walletErrorText: { color: colors.danger, fontSize: typography.caption },
   liveAlertList: {
     gap: 8,
   },
   liveAlertItem: {
     borderRadius: radii.card,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.12)",
-    backgroundColor: "rgba(255,255,255,0.04)",
+    borderColor: "rgba(10,51,40,0.16)",
+    backgroundColor: "rgba(10,51,40,0.04)",
     paddingHorizontal: 12,
     paddingVertical: 10,
   },
@@ -466,8 +455,8 @@ const styles = StyleSheet.create({
   upcomingItem: {
     borderRadius: radii.card,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.12)",
-    backgroundColor: "rgba(255,255,255,0.04)",
+    borderColor: "rgba(10,51,40,0.16)",
+    backgroundColor: "rgba(10,51,40,0.04)",
     paddingHorizontal: 12,
     paddingVertical: 10,
     flexDirection: "row",

@@ -56,8 +56,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
-    backgroundColor: "rgba(255,255,255,0.03)",
+    borderColor: "rgba(10,51,40,0.14)",
+    backgroundColor: "rgba(10,51,40,0.03)",
     paddingHorizontal: 10,
     paddingVertical: 9,
     gap: 8,
@@ -68,5 +68,5 @@ const styles = StyleSheet.create({
   right: { alignItems: "flex-end" },
   amount: { color: colors.textPrimary, fontSize: typography.bodySmall, fontWeight: "700" },
   subAmount: { color: colors.textSecondary, fontSize: typography.caption, marginTop: 1 },
-  link: { color: "#40C4FF", fontSize: typography.caption, textDecorationLine: "underline", marginTop: 2 },
+  link: { color: colors.brandGreen, fontSize: typography.caption, textDecorationLine: "underline", marginTop: 2 },
 });

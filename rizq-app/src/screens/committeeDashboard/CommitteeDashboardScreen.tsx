@@ -15,6 +15,7 @@ import {
   fetchCommitteeAnnouncements,
   fetchCommitteeDashboard,
   fetchCommitteeHistory,
+  fetchNomineeClaims,
   fetchCommitteePenaltyEvents,
   fetchSolUsdcRate,
   enforceCommitteePenalties,
@@ -92,6 +93,12 @@ export function CommitteeDashboardScreen() {
       !!authToken &&
       isManagerView &&
       Boolean(dashboardQuery.data?.committee.is_manager),
+    refetchInterval: 15000,
+  });
+  const nomineeClaimsQuery = useQuery({
+    queryKey: ["committee-nominee-claims", activeCommittee?.id],
+    queryFn: () => fetchNomineeClaims({ committeeId: activeCommittee?.id as string }),
+    enabled: !!activeCommittee?.id && isManagerView && Boolean(dashboardQuery.data?.committee.is_manager),
     refetchInterval: 15000,
   });
   const solRateQuery = useQuery({
@@ -204,6 +211,8 @@ export function CommitteeDashboardScreen() {
     const currentCycle = dashboardQuery.data?.committee.current_cycle ?? activeCommittee?.currentCycle ?? 1;
     const contributionUsdc = Math.max(0, (activeCommittee?.contributionLamports ?? 0) / 1_000_000);
     const targetPool = contributionUsdc * Math.max(1, activeCommittee?.memberCount ?? 1);
+    const projectedAtMaxPool =
+      contributionUsdc * Math.max(1, activeCommittee?.maxMembers ?? activeCommittee?.memberCount ?? 1);
     const paidMembers = historyQuery.data?.contributions
       ? new Set(
           historyQuery.data.contributions
@@ -249,6 +258,8 @@ export function CommitteeDashboardScreen() {
           )
         ) || 0,
       poolTargetUSDC: targetPool > 0 ? targetPool : contributionUsdc,
+      poolProjectedAtMaxUSDC: projectedAtMaxPool > 0 ? projectedAtMaxPool : targetPool,
+      maxMembersCount: activeCommittee?.maxMembers ?? activeCommittee?.memberCount ?? 0,
       paidMembersCount: paidMembers || 0,
       totalMembersCount: activeCommittee?.memberCount ?? 0,
     };
@@ -306,6 +317,11 @@ export function CommitteeDashboardScreen() {
       strikes: Number(safety.penalty_strikes ?? 0),
       payoutEligibility: safety.is_eligible_for_payout ? "Eligible" : "Suspended",
       collateralUsdc,
+      collateralSource: safety.collateral_source ?? null,
+      collateralTxShort:
+        typeof safety.collateral_tx_signature === "string" && safety.collateral_tx_signature.length > 12
+          ? `${safety.collateral_tx_signature.slice(0, 6)}...${safety.collateral_tx_signature.slice(-6)}`
+          : safety.collateral_tx_signature ?? null,
       deferredReleasedUsdc,
       deferredRemainingUsdc,
     };
@@ -354,7 +370,7 @@ export function CommitteeDashboardScreen() {
     },
   });
   const memberActionMutation = useMutation({
-    mutationFn: async (input: { memberId: string; action: "suspend" | "activate" | "remove" }) => {
+    mutationFn: async (input: { memberId: string; action: "suspend" | "activate" | "remove" | "deceased" }) => {
       if (!authToken || !activeCommittee?.id) throw new Error("Login required for manager controls.");
       await applyCommitteeMemberAction({
         committeeId: activeCommittee.id,
@@ -615,6 +631,15 @@ export function CommitteeDashboardScreen() {
               ) : null}
               <Text style={styles.safetyRow}>{`Strikes: ${safetyView.strikes} · Payout: ${safetyView.payoutEligibility}`}</Text>
               <Text style={styles.safetyRow}>{`Collateral: $${safetyView.collateralUsdc.toFixed(2)} USDC`}</Text>
+              <Text style={styles.safetyRow}>
+                {`Collateral source: ${
+                  safetyView.collateralSource === "on_chain_tx"
+                    ? "On-chain verified"
+                    : safetyView.collateralSource === "wallet_proof"
+                      ? "App-recorded"
+                      : "Not recorded yet"
+                }${safetyView.collateralTxShort ? ` (${safetyView.collateralTxShort})` : ""}`}
+              </Text>
               <Text style={styles.safetyRow}>{`Deferred released: $${safetyView.deferredReleasedUsdc.toFixed(2)} · Remaining: $${safetyView.deferredRemainingUsdc.toFixed(2)}`}</Text>
               {safetyView.onchain && safetyView.collateralUsdc <= 0 ? (
                 <Text style={styles.safetyHint}>
@@ -724,6 +749,30 @@ export function CommitteeDashboardScreen() {
                 <AccordionSection title="Penalty Events" defaultOpen={false}>
                   <PenaltyEvents events={penaltiesQuery.data ?? []} />
                 </AccordionSection>
+                <AccordionSection title="Nominee Claims" defaultOpen={false}>
+                  <View style={styles.nomineeClaimsWrap}>
+                    {(nomineeClaimsQuery.data ?? []).slice(0, 8).map((claim) => {
+                      const amount = Number(claim.amount_micro_usdc ?? 0) / 1_000_000;
+                      const expires =
+                        claim.expires_at != null ? new Date(claim.expires_at).toLocaleDateString() : "n/a";
+                      return (
+                        <View key={claim.id} style={styles.nomineeClaimRow}>
+                          <Text style={styles.nomineeClaimTitle}>
+                            {claim.nominee_name ?? "Unknown nominee"} · ${amount.toFixed(2)}
+                          </Text>
+                          <Text style={styles.nomineeClaimMeta}>
+                            {`Status: ${claim.status.toUpperCase()} · Expires: ${expires}`}
+                          </Text>
+                        </View>
+                      );
+                    })}
+                    {!nomineeClaimsQuery.isLoading && (nomineeClaimsQuery.data?.length ?? 0) === 0 ? (
+                      <Text style={styles.nomineeClaimMeta}>
+                        No nominee claims yet. Use member action "Mark as deceased" to trigger flow.
+                      </Text>
+                    ) : null}
+                  </View>
+                </AccordionSection>
               </ManagerPanel>
             </>
           ) : null}
@@ -748,6 +797,21 @@ export function CommitteeDashboardScreen() {
           );
         }}
         onAction={(action, member) => {
+          if (action === "deceased") {
+            Alert.alert(
+              "Confirm nominee flow",
+              "This marks the member as deceased, notifies nominee claim flow (30 days), and expired claims move to welfare. Continue?",
+              [
+                { text: "Cancel", style: "cancel" },
+                {
+                  text: "Confirm",
+                  style: "destructive",
+                  onPress: () => memberActionMutation.mutate({ memberId: member.id, action }),
+                },
+              ]
+            );
+            return;
+          }
           memberActionMutation.mutate({ memberId: member.id, action });
         }}
         onClose={() => setMemberModalOpen(false)}
@@ -810,6 +874,17 @@ const styles = StyleSheet.create({
     opacity: 0.9,
     lineHeight: 18,
   },
+  nomineeClaimsWrap: { gap: 8 },
+  nomineeClaimRow: {
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.1)",
+    borderRadius: radii.input,
+    backgroundColor: "rgba(255,255,255,0.03)",
+    padding: 10,
+    gap: 4,
+  },
+  nomineeClaimTitle: { color: colors.textPrimary, fontSize: typography.bodySmall, fontWeight: "700" },
+  nomineeClaimMeta: { color: colors.textSecondary, fontSize: typography.caption },
   collateralPrompt: { padding: 14, gap: 10 },
   collateralPromptTitle: {
     color: colors.textPrimary,

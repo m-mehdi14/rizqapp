@@ -1,6 +1,6 @@
 import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import { colors, radii, typography } from "../../../theme/tokens";
+import { a11y, colors, radii, typography } from "../../../theme/tokens";
 import type { PayoutTurn } from "../store/useCommitteeDashboardStore";
 
 type Props = {
@@ -48,8 +48,8 @@ const styles = StyleSheet.create({
     minHeight: 44,
     borderRadius: radii.input,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.1)",
-    backgroundColor: "rgba(255,255,255,0.04)",
+    borderColor: "rgba(10,51,40,0.16)",
+    backgroundColor: "rgba(10,51,40,0.04)",
     paddingHorizontal: 10,
     flexDirection: "row",
     alignItems: "center",
@@ -59,22 +59,22 @@ const styles = StyleSheet.create({
   name: { color: colors.textPrimary, fontSize: typography.bodySmall, fontWeight: "600", flex: 1 },
   actions: { flexDirection: "row", gap: 6 },
   smallBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
+    width: a11y.smallTapTarget,
+    height: a11y.smallTapTarget,
+    borderRadius: 10,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.2)",
+    borderColor: a11y.highContrastBorder,
     alignItems: "center",
     justifyContent: "center",
   },
   btnText: { color: colors.textPrimary, fontWeight: "700" },
   approvalBtn: {
     marginTop: 6,
-    minHeight: 44,
+    minHeight: a11y.minTapTarget,
     borderRadius: radii.button,
     borderWidth: 1,
-    borderColor: "rgba(0,230,118,0.45)",
-    backgroundColor: "rgba(0,230,118,0.14)",
+    borderColor: "rgba(29,158,117,0.4)",
+    backgroundColor: "rgba(29,158,117,0.12)",
     alignItems: "center",
     justifyContent: "center",
   },

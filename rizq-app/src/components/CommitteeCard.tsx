@@ -1,7 +1,7 @@
 import React from "react";
 import { View, Text, StyleSheet, Pressable, Animated } from "react-native";
 import LinearGradient from "react-native-linear-gradient";
-import { colors, radii, spacing, typography } from "../theme/tokens";
+import { a11y, colors, radii, spacing, typography } from "../theme/tokens";
 import { ProgressBar } from "./ProgressBar";
 import { USDCAmount } from "./USDCAmount";
 import type { Committee } from "../store/useAppStore";
@@ -132,8 +132,10 @@ const styles = StyleSheet.create({
     alignSelf: "flex-start",
     backgroundColor: colors.brandGreen,
     paddingHorizontal: 16,
-    paddingVertical: 8,
+    minHeight: a11y.minTapTarget,
     borderRadius: radii.button,
+    alignItems: "center",
+    justifyContent: "center",
   },
   depositText: { color: colors.textInverse, fontWeight: "700" },
 });

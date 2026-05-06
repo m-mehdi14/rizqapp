@@ -350,6 +350,6 @@ const styles = StyleSheet.create({
     minHeight: 42,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(8,14,26,0.95)",
+    backgroundColor: "rgba(245,240,232,0.96)",
   },
 });

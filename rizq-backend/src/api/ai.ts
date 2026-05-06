@@ -99,20 +99,26 @@ async function loadChatHistory(input: {
   const rows = (await prisma.$queryRawUnsafe(
     `
       SELECT id, role, message, created_at
-      FROM ai_chat_messages
-      WHERE user_id = $1::uuid
-        AND (
-          ($2::uuid IS NULL AND committee_id IS NULL)
-          OR committee_id = $2::uuid
-        )
-      ORDER BY created_at DESC
-      LIMIT $3
+      FROM (
+        SELECT id, role, message, created_at
+        FROM ai_chat_messages
+        WHERE user_id = $1::uuid
+          AND (
+            ($2::uuid IS NULL AND committee_id IS NULL)
+            OR committee_id = $2::uuid
+          )
+        ORDER BY created_at DESC,
+          CASE WHEN role = 'ai' THEN 0 ELSE 1 END ASC
+        LIMIT $3
+      ) recent
+      ORDER BY created_at ASC,
+        CASE WHEN role = 'user' THEN 0 ELSE 1 END ASC
     `,
     input.userId,
     input.committeeId ?? null,
     Math.max(1, Math.min(100, input.limit ?? 30))
   )) as Array<{ id: string; role: string; message: string; created_at: Date }>;
-  return rows.reverse();
+  return rows;
 }
 
 aiRouter.post("/chat", async (req, res) => {

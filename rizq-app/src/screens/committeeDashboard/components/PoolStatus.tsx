@@ -9,7 +9,11 @@ type Props = { committee: Committee; solUsdcRate: number | null };
 export function PoolStatus({ committee, solUsdcRate }: Props) {
   const currentSol = solUsdcRate && solUsdcRate > 0 ? committee.poolCurrentUSDC / solUsdcRate : null;
   const targetSol = solUsdcRate && solUsdcRate > 0 ? committee.poolTargetUSDC / solUsdcRate : null;
-  const ratio = committee.poolCurrentUSDC / committee.poolTargetUSDC;
+  const ratio = committee.poolTargetUSDC > 0 ? committee.poolCurrentUSDC / committee.poolTargetUSDC : 0;
+  const projectedAtMax = committee.poolProjectedAtMaxUSDC ?? committee.poolTargetUSDC;
+  const showProjectedAtMax =
+    (committee.maxMembersCount ?? committee.totalMembersCount) > committee.totalMembersCount &&
+    projectedAtMax > committee.poolTargetUSDC;
   return (
     <GlassCard style={styles.card}>
       <Text style={styles.heading}>Pool Status</Text>
@@ -27,6 +31,11 @@ export function PoolStatus({ committee, solUsdcRate }: Props) {
         <View style={[styles.fill, { width: `${Math.min(100, Math.max(0, ratio * 100))}%` }]} />
       </View>
       <Text style={styles.meta}>{`${committee.paidMembersCount} of ${committee.totalMembersCount} members paid`}</Text>
+      {showProjectedAtMax ? (
+        <Text style={styles.metaHint}>
+          {`Target shown is for joined members (${committee.totalMembersCount}). At full ${committee.maxMembersCount} members it will be $${projectedAtMax.toFixed(2)} USDC.`}
+        </Text>
+      ) : null}
     </GlassCard>
   );
 }
@@ -39,4 +48,5 @@ const styles = StyleSheet.create({
   track: { height: 8, borderRadius: 99, overflow: "hidden", backgroundColor: "rgba(255,255,255,0.14)" },
   fill: { height: "100%", backgroundColor: colors.brandGreen },
   meta: { color: colors.textSecondary, fontSize: typography.bodySmall },
+  metaHint: { color: colors.textSecondary, fontSize: typography.caption, lineHeight: 18, opacity: 0.9 },
 });

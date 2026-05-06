@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Pressable, Text, StyleSheet, Clipboard } from "react-native";
-import { colors, typography } from "../theme/tokens";
+import { a11y, colors, typography } from "../theme/tokens";
 
 type Props = { address: string; onCopy?: () => void };
 
@@ -32,11 +32,11 @@ export function WalletAddressChip({ address, onCopy }: Props) {
 }
 
 const styles = StyleSheet.create({
-  row: { flexDirection: "row", alignItems: "center", gap: 8 },
+  row: { flexDirection: "row", alignItems: "center", gap: 8, minHeight: a11y.minTapTarget, paddingHorizontal: 4 },
   mono: {
     fontFamily: "monospace",
     color: colors.textPrimary,
     fontSize: typography.bodySmall,
   },
-  action: { color: colors.accentPurple, fontSize: typography.caption },
+  action: { color: colors.brandGreen, fontSize: typography.caption, fontWeight: "700" },
 });

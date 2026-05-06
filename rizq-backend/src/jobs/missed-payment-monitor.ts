@@ -24,6 +24,14 @@ export function scheduleMissedPaymentMonitor(): void {
           },
         }).catch(() => undefined);
       }
+
+      await fetch(`http://127.0.0.1:${config.port}/api/nominees/claims/process-expired`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-internal-cron": "true",
+        },
+      }).catch(() => undefined);
     } catch (e) {
       console.error("[missed-payment-monitor] failed:", e);
     }

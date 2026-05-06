@@ -7,7 +7,7 @@ import {
   ViewStyle,
   StyleProp,
 } from "react-native";
-import { colors, radii, typography } from "../theme/tokens";
+import { a11y, colors, radii, typography } from "../theme/tokens";
 
 type Props = {
   label: string;
@@ -39,7 +39,7 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     borderRadius: radii.button,
     alignItems: "center",
-    minHeight: 48,
+    minHeight: a11y.minTapTarget,
     justifyContent: "center",
   },
   text: { color: colors.deepNavy, fontWeight: "700", fontSize: typography.body },

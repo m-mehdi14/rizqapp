@@ -35,7 +35,7 @@ export function CommitteeQuickCreateScreen() {
                   onPress={() => setCommitteeType(t)}
                   style={[
                     styles.typeCard,
-                    { borderColor: committeeType === t ? g0 : "rgba(255,255,255,0.12)" },
+                    { borderColor: committeeType === t ? g0 : "rgba(10,51,40,0.18)" },
                     committeeType === t && styles.typeCardOn,
                   ]}
                 >
@@ -176,9 +176,9 @@ const styles = StyleSheet.create({
     minHeight: 120,
     padding: 14,
     borderRadius: radii.card,
-    backgroundColor: "rgba(255,255,255,0.04)",
+    backgroundColor: "rgba(10,51,40,0.04)",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.1)",
+    borderColor: "rgba(10,51,40,0.16)",
     overflow: "hidden",
   },
   typeCardOn: { borderWidth: 2 },
@@ -205,7 +205,7 @@ const styles = StyleSheet.create({
     marginTop: 8,
     borderRadius: radii.input,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
+    borderColor: "rgba(10,51,40,0.16)",
     paddingHorizontal: 12,
     paddingVertical: 10,
     color: colors.textPrimary,
@@ -231,8 +231,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.1)",
-    backgroundColor: "rgba(255,255,255,0.04)",
+    borderColor: "rgba(10,51,40,0.16)",
+    backgroundColor: "rgba(10,51,40,0.04)",
   },
   presetText: { color: colors.textPrimary, fontSize: 12 },
   meaningCard: { padding: spacing.card, marginTop: 10 },

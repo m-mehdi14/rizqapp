@@ -86,8 +86,8 @@ const styles = StyleSheet.create({
     minHeight: 64,
     borderRadius: radii.button,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.12)",
-    backgroundColor: "rgba(255,255,255,0.05)",
+    borderColor: "rgba(10,51,40,0.18)",
+    backgroundColor: "rgba(10,51,40,0.04)",
     paddingVertical: 12,
     paddingHorizontal: 12,
     flexDirection: "row",
@@ -95,8 +95,8 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   buttonDisabled: {
-    backgroundColor: "rgba(255,255,255,0.03)",
-    borderColor: "rgba(255,255,255,0.08)",
+    backgroundColor: "rgba(10,51,40,0.02)",
+    borderColor: "rgba(10,51,40,0.1)",
   },
   label: {
     color: colors.textPrimary,
@@ -105,6 +105,6 @@ const styles = StyleSheet.create({
     flexShrink: 1,
   },
   labelDisabled: {
-    color: colors.textMuted,
+    color: colors.textSecondary,
   },
 });

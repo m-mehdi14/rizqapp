@@ -58,10 +58,10 @@ const styles = StyleSheet.create({
   },
   emptyWrap: {
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
+    borderColor: "rgba(10,51,40,0.14)",
     borderRadius: 16,
     padding: spacing.card,
-    backgroundColor: "rgba(255,255,255,0.04)",
+    backgroundColor: "rgba(10,51,40,0.04)",
   },
   emptyTitle: { color: colors.textPrimary, fontWeight: "700", marginBottom: 6 },
   empty: { color: colors.textSecondary, lineHeight: 20 },
