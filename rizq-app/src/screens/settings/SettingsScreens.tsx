@@ -64,6 +64,59 @@ function SettingsRow({
   );
 }
 
+function LegalDocSection({ title, body }: { title: string; body: string }) {
+  return (
+    <View style={styles.legalSection}>
+      <Text style={styles.legalTitle}>{title}</Text>
+      <Text style={styles.legalBody}>{body}</Text>
+    </View>
+  );
+}
+
+function NomineeClaimTimeline({
+  status,
+  notifiedAt,
+  claimedAt,
+  expiresAt,
+}: {
+  status: "pending" | "claimed" | "expired";
+  notifiedAt: string;
+  claimedAt: string | null;
+  expiresAt: string | null;
+}) {
+  const notifiedDone = Boolean(notifiedAt);
+  const claimedDone = status === "claimed";
+  const expiredDone = status === "expired";
+  return (
+    <View style={styles.timelineWrap}>
+      <View style={styles.timelineRow}>
+        <View style={[styles.timelineDot, notifiedDone && styles.timelineDotOn]} />
+        <Text style={styles.timelineText}>{`Manager marked deceased • ${new Date(notifiedAt).toLocaleDateString()}`}</Text>
+      </View>
+      <View style={styles.timelineLine} />
+      <View style={styles.timelineRow}>
+        <View style={[styles.timelineDot, (claimedDone || expiredDone || status === "pending") && styles.timelineDotOn]} />
+        <Text style={styles.timelineText}>
+          {status === "pending"
+            ? `Nominee notified • claim window open until ${expiresAt ? new Date(expiresAt).toLocaleDateString() : "N/A"}`
+            : "Nominee notified"}
+        </Text>
+      </View>
+      <View style={styles.timelineLine} />
+      <View style={styles.timelineRow}>
+        <View style={[styles.timelineDot, (claimedDone || expiredDone) && styles.timelineDotOn]} />
+        <Text style={styles.timelineText}>
+          {claimedDone
+            ? `Claimed • ${claimedAt ? new Date(claimedAt).toLocaleDateString() : "Completed"}`
+            : expiredDone
+              ? "Expired • moved to welfare pool"
+              : "Pending final outcome"}
+        </Text>
+      </View>
+    </View>
+  );
+}
+
 export function SettingsProfileScreen() {
   const displayName = useAppStore((s) => s.displayName);
   const username = useAppStore((s) => s.username);
@@ -425,6 +478,12 @@ export function SettingsNomineeClaimsScreen() {
               <Text style={styles.rowHelper}>
                 {claim.status === "pending" ? `${daysRemaining} day(s) left` : `Updated ${new Date(claim.notified_at).toLocaleDateString()}`}
               </Text>
+              <NomineeClaimTimeline
+                status={claim.status}
+                notifiedAt={claim.notified_at}
+                claimedAt={claim.claimed_at}
+                expiresAt={claim.expires_at}
+              />
               {claim.tx_signature ? (
                 <Pressable
                   onPress={() =>
@@ -478,11 +537,136 @@ export function SettingsSupportScreen() {
 }
 
 export function SettingsAboutScreen() {
+  const nav = useNavigation<NavigationProp<ParamListBase>>();
   return (
-    <SettingsLayout title="About & Legal" subtitle="Version, legal terms, and policy information.">
+    <SettingsLayout title="About & Legal" subtitle="Play Store-required policy and compliance details.">
       <GlassCard style={styles.card}>
         <Text style={styles.rowLabel}>Rizq App</Text>
-        <Text style={styles.rowHelper}>Digital committee app on Solana devnet.</Text>
+        <Text style={styles.rowHelper}>Version 1.0.0 • Digital committee app on Solana.</Text>
+        <SettingsRow
+          label="Terms & Conditions"
+          helper="Usage terms, eligibility, and dispute policy"
+          onPress={() => nav.navigate("SettingsTerms")}
+        />
+        <SettingsRow
+          label="Privacy Policy"
+          helper="Data collection, use, retention, and rights"
+          onPress={() => nav.navigate("SettingsPrivacy")}
+        />
+        <SettingsRow
+          label="Data Safety"
+          helper="What we collect and why (Play Store declaration)"
+          onPress={() => nav.navigate("SettingsDataSafety")}
+        />
+        <SettingsRow
+          label="Account Deletion"
+          helper="How to request deletion and what gets removed"
+          onPress={() => nav.navigate("SettingsAccountDeletion")}
+        />
+      </GlassCard>
+    </SettingsLayout>
+  );
+}
+
+export function SettingsTermsScreen() {
+  return (
+    <SettingsLayout title="Terms & Conditions" subtitle="Effective date: May 2026">
+      <GlassCard style={styles.card}>
+        <LegalDocSection
+          title="1. Eligibility"
+          body="You must be legally allowed to use digital financial products in your jurisdiction and provide accurate account information."
+        />
+        <LegalDocSection
+          title="2. Service scope"
+          body="Rizq provides committee coordination, wallet-integrated flows, and informational insights. On-chain programs and network conditions can affect outcomes."
+        />
+        <LegalDocSection
+          title="3. User responsibilities"
+          body="You are responsible for wallet access, transaction review before signing, and nominee information accuracy."
+        />
+        <LegalDocSection
+          title="4. Fees and settlements"
+          body="Displayed fees and payout rules are shown in-app before participation. On-chain confirmations are the final source for transaction state."
+        />
+        <LegalDocSection
+          title="5. Limitation"
+          body="Rizq is provided as-is. We do not guarantee uninterrupted service, third-party RPC uptime, or market price stability."
+        />
+      </GlassCard>
+    </SettingsLayout>
+  );
+}
+
+export function SettingsPrivacyScreen() {
+  return (
+    <SettingsLayout title="Privacy Policy" subtitle="How Rizq handles personal data">
+      <GlassCard style={styles.card}>
+        <LegalDocSection
+          title="Data collected"
+          body="Account email, profile fields, wallet address, nominee data, device push token, and app event metadata for product reliability."
+        />
+        <LegalDocSection
+          title="Purpose"
+          body="To authenticate users, deliver committee features, send reminders, provide AI guidance context, and prevent abuse."
+        />
+        <LegalDocSection
+          title="Data sharing"
+          body="We use service providers for infrastructure, notifications, and analytics. We do not sell personal data."
+        />
+        <LegalDocSection
+          title="Retention"
+          body="Data is retained while your account is active, or as needed for legal/security obligations. You can request deletion."
+        />
+        <LegalDocSection
+          title="Contact"
+          body="For privacy concerns and requests, use the in-app Support screen and mention 'Privacy Request'."
+        />
+      </GlassCard>
+    </SettingsLayout>
+  );
+}
+
+export function SettingsDataSafetyScreen() {
+  return (
+    <SettingsLayout title="Data Safety" subtitle="Play Store disclosure summary">
+      <GlassCard style={styles.card}>
+        <LegalDocSection
+          title="Collected data types"
+          body="Personal info (email/profile), financial app activity (committee actions), device identifiers (push token), and diagnostics."
+        />
+        <LegalDocSection
+          title="Encryption"
+          body="Network requests use encrypted transport. Sensitive secrets are not exposed in client logs."
+        />
+        <LegalDocSection
+          title="User controls"
+          body="You can edit profile fields, update nominee data, and request account deletion from settings/support."
+        />
+        <LegalDocSection
+          title="Children policy"
+          body="Rizq is not intended for children under the minimum digital consent age in applicable regions."
+        />
+      </GlassCard>
+    </SettingsLayout>
+  );
+}
+
+export function SettingsAccountDeletionScreen() {
+  return (
+    <SettingsLayout title="Account Deletion" subtitle="Request process and data impact">
+      <GlassCard style={styles.card}>
+        <LegalDocSection
+          title="How to request"
+          body="Open Support from Settings and send a deletion request with your registered account email."
+        />
+        <LegalDocSection
+          title="What is deleted"
+          body="Profile-linked personal records are removed or anonymized where possible. Wallet-public on-chain records remain publicly visible by blockchain design."
+        />
+        <LegalDocSection
+          title="Timeline"
+          body="Requests are processed after verification, typically within 7 business days unless compliance holds are required."
+        />
       </GlassCard>
     </SettingsLayout>
   );
@@ -491,19 +675,29 @@ export function SettingsAboutScreen() {
 export function SettingsHubScreen() {
   const nav = useNavigation<NavigationProp<ParamListBase>>();
   return (
-    <SettingsLayout title="Settings" subtitle="Account, safety, wallet, app preferences, and support.">
+    <SettingsLayout title="Settings" subtitle="Organized controls for account, safety, wallet, and support.">
       <GlassCard style={styles.card}>
-        <SettingsRow label="Profile" onPress={() => nav.navigate("SettingsProfile")} />
-        <SettingsRow label="KYC Status" onPress={() => nav.navigate("SettingsKycStatus")} />
-        <SettingsRow label="Nominee" onPress={() => nav.navigate("SettingsNominee")} />
-        <SettingsRow label="Wallet Management" onPress={() => nav.navigate("SettingsWalletManagement")} />
-        <SettingsRow label="Notifications" onPress={() => nav.navigate("SettingsNotifications")} />
-        <SettingsRow label="Preferences" onPress={() => nav.navigate("SettingsPreferences")} />
-        <SettingsRow label="Security" onPress={() => nav.navigate("SettingsSecurity")} />
-        <SettingsRow label="Community" onPress={() => nav.navigate("SettingsCommunity")} />
-        <SettingsRow label="Nominee Claims" onPress={() => nav.navigate("SettingsNomineeClaims")} />
-        <SettingsRow label="Support" onPress={() => nav.navigate("SettingsSupport")} />
-        <SettingsRow label="About & Legal" onPress={() => nav.navigate("SettingsAbout")} />
+        <Text style={styles.groupTitle}>Account</Text>
+        <SettingsRow label="Profile" helper="Name, username, and public identity" onPress={() => nav.navigate("SettingsProfile")} />
+        <SettingsRow label="KYC Status" helper="Verification and participation eligibility" onPress={() => nav.navigate("SettingsKycStatus")} />
+      </GlassCard>
+      <GlassCard style={styles.card}>
+        <Text style={styles.groupTitle}>Safety</Text>
+        <SettingsRow label="Nominee" helper="Set claim contact for edge cases" onPress={() => nav.navigate("SettingsNominee")} />
+        <SettingsRow label="Nominee Claims" helper="Pending/claimed/expired claim windows" onPress={() => nav.navigate("SettingsNomineeClaims")} />
+        <SettingsRow label="Security" helper="Biometric and sensitive action protection" onPress={() => nav.navigate("SettingsSecurity")} />
+      </GlassCard>
+      <GlassCard style={styles.card}>
+        <Text style={styles.groupTitle}>Wallet & App</Text>
+        <SettingsRow label="Wallet Management" helper="Connected wallet and address controls" onPress={() => nav.navigate("SettingsWalletManagement")} />
+        <SettingsRow label="Notifications" helper="Reminder channels and push token" onPress={() => nav.navigate("SettingsNotifications")} />
+        <SettingsRow label="Preferences" helper="Language and display behavior" onPress={() => nav.navigate("SettingsPreferences")} />
+      </GlassCard>
+      <GlassCard style={styles.card}>
+        <Text style={styles.groupTitle}>Community & Help</Text>
+        <SettingsRow label="Community" helper="Welfare transparency and committee-ledgers" onPress={() => nav.navigate("SettingsCommunity")} />
+        <SettingsRow label="Support" helper="Report issues and contact team" onPress={() => nav.navigate("SettingsSupport")} />
+        <SettingsRow label="About & Legal" helper="Version, policies, legal docs, and deletion policy" onPress={() => nav.navigate("SettingsAbout")} />
       </GlassCard>
     </SettingsLayout>
   );
@@ -513,6 +707,13 @@ const styles = StyleSheet.create({
   title: { color: colors.textPrimary, fontSize: typography.h1, fontWeight: "800" },
   subtitle: { color: colors.textSecondary, fontSize: typography.bodySmall },
   card: { padding: 14, gap: 10 },
+  groupTitle: {
+    color: colors.textSecondary,
+    fontSize: typography.caption,
+    textTransform: "uppercase",
+    letterSpacing: 0.8,
+    fontWeight: "700",
+  },
   row: {
     minHeight: a11y.minTapTarget,
     flexDirection: "row",
@@ -574,5 +775,55 @@ const styles = StyleSheet.create({
     height: 42,
     borderRadius: 10,
     backgroundColor: "rgba(10,51,40,0.08)",
+  },
+  legalSection: {
+    borderWidth: 1,
+    borderColor: "rgba(10,51,40,0.12)",
+    backgroundColor: "rgba(10,51,40,0.03)",
+    borderRadius: 10,
+    padding: 10,
+    gap: 4,
+  },
+  legalTitle: {
+    color: colors.textPrimary,
+    fontSize: typography.bodySmall,
+    fontWeight: "700",
+  },
+  legalBody: {
+    color: colors.textSecondary,
+    fontSize: typography.caption,
+    lineHeight: 18,
+  },
+  timelineWrap: {
+    marginTop: 4,
+    gap: 4,
+  },
+  timelineRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  timelineLine: {
+    marginLeft: 5,
+    width: 1,
+    height: 10,
+    backgroundColor: "rgba(10,51,40,0.2)",
+  },
+  timelineDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    borderWidth: 1,
+    borderColor: "rgba(10,51,40,0.35)",
+    backgroundColor: "rgba(10,51,40,0.08)",
+  },
+  timelineDotOn: {
+    borderColor: "rgba(29,158,117,0.7)",
+    backgroundColor: "rgba(29,158,117,0.65)",
+  },
+  timelineText: {
+    color: colors.textSecondary,
+    fontSize: typography.caption,
+    flex: 1,
   },
 });

@@ -87,19 +87,24 @@ export function SettingsMainScreen() {
       subtitle="Account, identity & safety, notifications, preferences, support, and legal."
     >
       <GlassCard style={styles.card}>
+        <Text style={styles.groupLabel}>Quick access</Text>
+        <Pressable style={styles.primaryBtn} onPress={() => nav.navigate("SettingsHub")}>
+          <Text style={styles.primaryText}>Open Full Settings</Text>
+        </Pressable>
+        <Pressable style={styles.secondaryBtn} onPress={() => nav.navigate("WalletMain")}>
+          <Text style={styles.secondaryText}>Open Wallet</Text>
+        </Pressable>
+      </GlassCard>
+
+      <GlassCard style={styles.card}>
+        <Text style={styles.groupLabel}>Overview</Text>
         <Section icon={<UserCircle color={colors.info} size={16} />} title="Account" body="Display name, username, profile photo, and account deletion controls." />
         <Section icon={<IdentificationCard color={colors.warning} size={16} />} title="Identity & Safety" body="KYC status, nominee details, wallet management, and security lock settings." />
         <Section icon={<GearSix color={colors.textSecondary} size={16} />} title="App Preferences" body="Language, currency display, theme, and AI coach language." />
       </GlassCard>
 
-      <Pressable style={styles.primaryBtn} onPress={() => nav.navigate("WalletMain")}>
-        <Text style={styles.primaryText}>Open Wallet</Text>
-      </Pressable>
-      <Pressable style={styles.secondaryBtn} onPress={() => nav.navigate("SettingsHub")}>
-        <Text style={styles.secondaryText}>Open full settings screens</Text>
-      </Pressable>
-
       <GlassCard style={styles.card}>
+        <Text style={styles.groupLabel}>Session & wallet</Text>
         <Text style={styles.sectionTitle}>Wallet Provider</Text>
         <Text style={styles.help}>
           {wallet
@@ -134,6 +139,7 @@ export function SettingsMainScreen() {
       </GlassCard>
 
       <GlassCard style={styles.card}>
+        <Text style={styles.groupLabel}>Notifications</Text>
         <View style={styles.switchRow}>
           <Text style={styles.switchText}>Payment reminder notifications</Text>
           <Switch
@@ -146,22 +152,25 @@ export function SettingsMainScreen() {
         <Text style={styles.help}>Advance warning: 24h before due date</Text>
       </GlassCard>
 
-      <Pressable
-        style={styles.dangerBtn}
-        onPress={() => {
-          persistAuthToken(null)
-            .then(() => {
-              clearSession();
-              nav.reset({ index: 0, routes: [{ name: "ProfileMain" }] });
-            })
-            .catch(() => {
-              clearSession();
-              nav.reset({ index: 0, routes: [{ name: "ProfileMain" }] });
-            });
-        }}
-      >
-        <Text style={styles.dangerText}>Logout</Text>
-      </Pressable>
+      <GlassCard style={styles.card}>
+        <Text style={styles.groupLabel}>Session control</Text>
+        <Pressable
+          style={styles.dangerBtn}
+          onPress={() => {
+            persistAuthToken(null)
+              .then(() => {
+                clearSession();
+                nav.reset({ index: 0, routes: [{ name: "ProfileMain" }] });
+              })
+              .catch(() => {
+                clearSession();
+                nav.reset({ index: 0, routes: [{ name: "ProfileMain" }] });
+              });
+          }}
+        >
+          <Text style={styles.dangerText}>Logout</Text>
+        </Pressable>
+      </GlassCard>
     </Layout>
   );
 }
@@ -352,6 +361,13 @@ const styles = StyleSheet.create({
   proText: { color: colors.textInverse, fontSize: typography.bodySmall, fontWeight: "700" },
   card: { padding: 14, gap: 10 },
   sectionRow: { gap: 4, paddingBottom: 8, borderBottomWidth: 1, borderBottomColor: "rgba(255,255,255,0.06)" },
+  groupLabel: {
+    color: colors.textSecondary,
+    fontSize: typography.caption,
+    textTransform: "uppercase",
+    letterSpacing: 0.8,
+    fontWeight: "700",
+  },
   sectionTitle: { color: colors.textPrimary, fontSize: typography.body, fontWeight: "700" },
   sectionBody: { color: colors.textSecondary, fontSize: typography.bodySmall, lineHeight: 20 },
   switchRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 },

@@ -8,6 +8,10 @@ import type { BalanceData } from "../types";
 type Props = {
   balance: BalanceData;
   onPress: () => void;
+  lastSyncedLabel?: string;
+  isStale?: boolean;
+  isRefreshing?: boolean;
+  onRefresh?: () => void;
 };
 
 function formatUsd(value: number): string {
@@ -22,7 +26,14 @@ function formatPkr(value: number): string {
   return `PKR ${Math.round(value).toLocaleString()}`;
 }
 
-export function BalanceCard({ balance, onPress }: Props) {
+export function BalanceCard({
+  balance,
+  onPress,
+  lastSyncedLabel,
+  isStale = false,
+  isRefreshing = false,
+  onRefresh,
+}: Props) {
   return (
     <Pressable
       accessibilityRole="button"
@@ -50,7 +61,22 @@ export function BalanceCard({ balance, onPress }: Props) {
         <Text style={styles.pkr}>
           ≈ {formatUsd(balance.totalUsdcEquivalent)} USDC • {formatPkr(balance.pkrEquivalent)}
         </Text>
-        {/* TODO: Use React Query + CoinGecko polling every 60s here. */}
+        {(lastSyncedLabel || onRefresh) ? (
+          <View style={styles.syncRow}>
+            <Text style={[styles.syncText, isStale && styles.syncTextStale]}>
+              {lastSyncedLabel ?? "Not synced yet"}
+            </Text>
+            {onRefresh ? (
+              <Pressable
+                onPress={onRefresh}
+                disabled={isRefreshing}
+                style={[styles.refreshChip, isRefreshing && styles.refreshChipDisabled]}
+              >
+                <Text style={styles.refreshChipText}>{isRefreshing ? "Refreshing..." : "Refresh"}</Text>
+              </Pressable>
+            ) : null}
+          </View>
+        ) : null}
 
         <View style={styles.figureRow}>
           <View style={styles.figureItem}>
@@ -130,6 +156,39 @@ const styles = StyleSheet.create({
     fontSize: typography.body,
     marginTop: 4,
     marginBottom: 14,
+  },
+  syncRow: {
+    marginTop: -4,
+    marginBottom: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+  },
+  syncText: {
+    color: "rgba(255,255,255,0.85)",
+    fontSize: typography.caption,
+  },
+  syncTextStale: {
+    color: "#FFD9A0",
+  },
+  refreshChip: {
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.28)",
+    backgroundColor: "rgba(255,255,255,0.14)",
+    paddingHorizontal: 10,
+    minHeight: 30,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  refreshChipDisabled: {
+    opacity: 0.65,
+  },
+  refreshChipText: {
+    color: "#FFFFFF",
+    fontSize: typography.caption,
+    fontWeight: "700",
   },
   figureRow: {
     flexDirection: "row",

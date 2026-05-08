@@ -29,9 +29,24 @@ function CtaButton({
 }
 
 function dueLabel(daysLeft: number) {
-  if (daysLeft <= 0) return "Due today";
+  if (daysLeft < 0) return `${Math.abs(daysLeft)} day${Math.abs(daysLeft) === 1 ? "" : "s"} overdue`;
+  if (daysLeft === 0) return "Due today";
   if (daysLeft === 1) return "Due tomorrow";
   return `${daysLeft} days left`;
+}
+
+function payoutLockBadges(item: { daysLeft?: number; status?: string; currentCycle?: number; totalCycles?: number }) {
+  const daysLeft = item.daysLeft ?? 0;
+  const status = (item.status ?? "").toLowerCase();
+  const isCompleted = status.includes("completed");
+  const cycle = item.currentCycle ?? 1;
+  const totalCycles = item.totalCycles ?? 1;
+  if (isCompleted || cycle > totalCycles) return ["Already claimed"];
+  const badges: string[] = [];
+  if (daysLeft > 0) badges.push("Cycle date not reached");
+  if (daysLeft <= 2) badges.push("Waiting for member payments");
+  if (badges.length === 0) badges.push("Check payout screen for final eligibility");
+  return badges;
 }
 
 export function CommitteesHubScreen() {
@@ -70,11 +85,13 @@ export function CommitteesHubScreen() {
           <SectionHeader title="Committees I Manage" />
           {managedCommittees.map((item) => (
             <GlassCard key={item.id} style={styles.card}>
-              {Math.max(0, item.daysLeft) <= 2 ? (
-                <Text style={Math.max(0, item.daysLeft) === 0 ? styles.alertDanger : styles.alertWarning}>
-                  {Math.max(0, item.daysLeft) === 0
+              {(item.daysLeft ?? 0) <= 2 ? (
+                <Text style={(item.daysLeft ?? 0) <= 0 ? styles.alertDanger : styles.alertWarning}>
+                  {(item.daysLeft ?? 0) === 0
                     ? "Action required: cycle payment due today"
-                    : `Upcoming due: ${dueLabel(Math.max(0, item.daysLeft))}`}
+                    : (item.daysLeft ?? 0) < 0
+                      ? `Overdue: ${dueLabel(item.daysLeft ?? 0)}`
+                      : `Upcoming due: ${dueLabel(item.daysLeft ?? 0)}`}
                 </Text>
               ) : null}
               <View style={styles.cardTopRow}>
@@ -90,8 +107,28 @@ export function CommitteesHubScreen() {
               </View>
               <Text style={styles.cardMeta}>{`${item.memberCount ?? 0}/${item.maxMembers ?? 0} members`}</Text>
               <Text style={styles.cardSub}>
-                {`Next cycle: ${item.nextCycleDate ? new Date(item.nextCycleDate).toLocaleDateString() : "TBD"} • ${dueLabel(Math.max(0, item.daysLeft))}`}
+                {`Next cycle: ${item.nextCycleDate ? new Date(item.nextCycleDate).toLocaleDateString() : "TBD"} • ${dueLabel(item.daysLeft ?? 0)}`}
               </Text>
+              <View style={styles.payoutBadgeRow}>
+                {payoutLockBadges(item).map((badge) => (
+                  <View
+                    key={`${item.id}-mgr-${badge}`}
+                    style={[
+                      styles.payoutBadge,
+                      badge === "Already claimed" && styles.payoutBadgeReady,
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.payoutBadgeText,
+                        badge === "Already claimed" && styles.payoutBadgeTextReady,
+                      ]}
+                    >
+                      {badge}
+                    </Text>
+                  </View>
+                ))}
+              </View>
               {item.inviteCode ? (
                 <Pressable
                   style={styles.codeChip}
@@ -120,11 +157,13 @@ export function CommitteesHubScreen() {
           <SectionHeader title="Committees I Joined" />
           {joinedCommittees.map((item) => (
             <GlassCard key={item.id} style={styles.card}>
-              {Math.max(0, item.daysLeft) <= 2 ? (
-                <Text style={Math.max(0, item.daysLeft) === 0 ? styles.alertDanger : styles.alertWarning}>
-                  {Math.max(0, item.daysLeft) === 0
+              {(item.daysLeft ?? 0) <= 2 ? (
+                <Text style={(item.daysLeft ?? 0) <= 0 ? styles.alertDanger : styles.alertWarning}>
+                  {(item.daysLeft ?? 0) === 0
                     ? "Your contribution is due today"
-                    : `Your due date is near (${dueLabel(Math.max(0, item.daysLeft))})`}
+                    : (item.daysLeft ?? 0) < 0
+                      ? `Your contribution is overdue (${dueLabel(item.daysLeft ?? 0)})`
+                      : `Your due date is near (${dueLabel(item.daysLeft ?? 0)})`}
                 </Text>
               ) : null}
               <View style={styles.cardTopRow}>
@@ -133,8 +172,28 @@ export function CommitteesHubScreen() {
               </View>
               <Text style={styles.cardMeta}>{`Cycle ${item.currentCycle ?? 1}/${item.totalCycles ?? 1}`}</Text>
               <Text style={styles.cardSub}>
-                {`${item.status ?? "active"} • ${item.nextCycleDate ? new Date(item.nextCycleDate).toLocaleDateString() : "TBD"} • ${dueLabel(Math.max(0, item.daysLeft))}`}
+                {`${item.status ?? "active"} • ${item.nextCycleDate ? new Date(item.nextCycleDate).toLocaleDateString() : "TBD"} • ${dueLabel(item.daysLeft ?? 0)}`}
               </Text>
+              <View style={styles.payoutBadgeRow}>
+                {payoutLockBadges(item).map((badge) => (
+                  <View
+                    key={`${item.id}-mem-${badge}`}
+                    style={[
+                      styles.payoutBadge,
+                      badge === "Already claimed" && styles.payoutBadgeReady,
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.payoutBadgeText,
+                        badge === "Already claimed" && styles.payoutBadgeTextReady,
+                      ]}
+                    >
+                      {badge}
+                    </Text>
+                  </View>
+                ))}
+              </View>
               <Pressable
                 style={styles.linkBtn}
                 onPress={() =>
@@ -231,6 +290,23 @@ const styles = StyleSheet.create({
   },
   linkBtn: { marginTop: 3, alignSelf: "flex-start" },
   linkText: { color: colors.info, fontSize: typography.caption, textDecorationLine: "underline" },
+  payoutBadgeRow: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 2 },
+  payoutBadge: {
+    borderWidth: 1,
+    borderColor: "rgba(10,51,40,0.2)",
+    borderRadius: 999,
+    backgroundColor: "rgba(10,51,40,0.05)",
+    minHeight: 26,
+    paddingHorizontal: 9,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  payoutBadgeReady: {
+    borderColor: "rgba(29,158,117,0.4)",
+    backgroundColor: "rgba(29,158,117,0.12)",
+  },
+  payoutBadgeText: { color: colors.textPrimary, fontSize: typography.caption, fontWeight: "700" },
+  payoutBadgeTextReady: { color: colors.brandGreenDim },
   plusInline: {
     marginTop: 2,
     minHeight: 44,

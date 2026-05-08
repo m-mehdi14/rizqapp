@@ -31,8 +31,10 @@ import {
   ProRenewalScreen,
 } from "../screens/profile/ProfileScreens";
 import {
+  SettingsAccountDeletionScreen,
   SettingsAboutScreen,
   SettingsCommunityScreen,
+  SettingsDataSafetyScreen,
   SettingsHubScreen,
   SettingsKycStatusScreen,
   SettingsNomineeClaimsScreen,
@@ -40,8 +42,10 @@ import {
   SettingsNotificationsScreen,
   SettingsPreferencesScreen,
   SettingsProfileScreen,
+  SettingsPrivacyScreen,
   SettingsSecurityScreen,
   SettingsSupportScreen,
+  SettingsTermsScreen,
   SettingsWalletManagementScreen,
 } from "../screens/settings/SettingsScreens";
 import {
@@ -265,6 +269,10 @@ function ProfileStackNav() {
       <ProfileStack.Screen name="SettingsNomineeClaims" component={SettingsNomineeClaimsScreen} />
       <ProfileStack.Screen name="SettingsSupport" component={SettingsSupportScreen} />
       <ProfileStack.Screen name="SettingsAbout" component={SettingsAboutScreen} />
+      <ProfileStack.Screen name="SettingsTerms" component={SettingsTermsScreen} />
+      <ProfileStack.Screen name="SettingsPrivacy" component={SettingsPrivacyScreen} />
+      <ProfileStack.Screen name="SettingsDataSafety" component={SettingsDataSafetyScreen} />
+      <ProfileStack.Screen name="SettingsAccountDeletion" component={SettingsAccountDeletionScreen} />
       <ProfileStack.Screen name="WalletMain" component={WalletMainScreen} />
       <ProfileStack.Screen name="WalletDeposit" component={WalletDepositScreen} />
       <ProfileStack.Screen name="WalletHistory" component={WalletHistoryScreen} />

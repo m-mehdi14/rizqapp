@@ -354,7 +354,7 @@ export function mapGoalRowToGoal(row: GoalRow): Goal {
   const targetLamports = Number(row.target_usdc ?? 0);
   const savedLamports = Number(row.current_usdc ?? 0);
   const deadlineMs = row.deadline ? new Date(row.deadline).getTime() : Date.now();
-  const daysLeft = Math.max(0, Math.ceil((deadlineMs - Date.now()) / 86400000));
+  const daysLeft = Math.ceil((deadlineMs - Date.now()) / 86400000);
   const progress =
     targetLamports > 0 ? Math.max(0, Math.min(1, savedLamports / targetLamports)) : 0;
   return {
@@ -378,7 +378,7 @@ export function mapCommitteeRowToCommittee(row: CommitteeRow): Committee {
   const savedLamports = Math.max(0, currentCycle - 1) * contributionLamports;
   const targetLamports = totalCycles * contributionLamports;
   const nextDueMs = row.next_cycle_date ? new Date(row.next_cycle_date).getTime() : Date.now();
-  const daysLeft = Math.max(0, Math.ceil((nextDueMs - Date.now()) / 86400000));
+  const daysLeft = Math.ceil((nextDueMs - Date.now()) / 86400000);
   const progress =
     targetLamports > 0 ? Math.max(0, Math.min(1, savedLamports / targetLamports)) : 0;
 

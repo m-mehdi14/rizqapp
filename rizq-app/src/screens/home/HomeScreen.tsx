@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import type { NavigationProp, ParamListBase } from "@react-navigation/native";
@@ -19,6 +19,13 @@ import { fetchPkrRate, fetchSolUsdcRate, fetchWalletBalanceSummary } from "../..
 import { useWeb3AuthWallet } from "../../hooks/useWeb3AuthWallet";
 
 const FLOATING_TAB_BAR_CLEARANCE = 108;
+function dueStatusLabel(daysLeftRaw: number) {
+  const daysLeft = Number.isFinite(daysLeftRaw) ? daysLeftRaw : 0;
+  if (daysLeft < 0) return `${Math.abs(daysLeft)} day${Math.abs(daysLeft) === 1 ? "" : "s"} overdue`;
+  if (daysLeft === 0) return "Due today";
+  if (daysLeft === 1) return "Due tomorrow";
+  return `${daysLeft} days left`;
+}
 
 export function HomeScreen() {
   const navigation = useNavigation<NavigationProp<ParamListBase>>();
@@ -30,6 +37,7 @@ export function HomeScreen() {
   const [isConnectingEmbedded, setIsConnectingEmbedded] = useState(false);
   const [walletError, setWalletError] = useState<string | null>(null);
   const [showConnectCard, setShowConnectCard] = useState(true);
+  const [clockMs, setClockMs] = useState(Date.now());
   const activeCommitteeId = liveCommittees[0]?.id;
   const urgentAction = useMemo<UrgentAction | null>(() => {
     const urgentCommittee = liveCommittees.find((committee) => committee.daysLeft <= 2);
@@ -62,6 +70,15 @@ export function HomeScreen() {
     enabled: !!wallet,
     refetchInterval: 20_000,
   });
+  useEffect(() => {
+    const id = setInterval(() => setClockMs(Date.now()), 30_000);
+    return () => clearInterval(id);
+  }, []);
+  const summaryUpdatedAt = walletSummaryQuery.dataUpdatedAt || 0;
+  const summaryAgeMs = summaryUpdatedAt > 0 ? Math.max(0, clockMs - summaryUpdatedAt) : Number.POSITIVE_INFINITY;
+  const isWalletSummaryStale = summaryAgeMs > 75_000;
+  const walletSummaryLastSyncedLabel =
+    summaryUpdatedAt > 0 ? `Last synced ${new Date(summaryUpdatedAt).toLocaleTimeString()}` : "Not synced yet";
 
   const committees: CommitteeItem[] = useMemo(() => {
     return liveCommittees.map((committee) => ({
@@ -69,13 +86,13 @@ export function HomeScreen() {
       name: committee.name,
       typeLabel: committee.type ?? "General",
       currentCycleLabel: `Cycle ${committee.currentCycle ?? 1} of ${committee.totalCycles ?? 1}`,
-      nextPaymentDueLabel: `Next due: in ${committee.daysLeft} days`,
+      nextPaymentDueLabel: `Next due: ${dueStatusLabel(committee.daysLeft ?? 0)}`,
     }));
   }, [liveCommittees]);
 
   const isPaymentDue = useMemo(
-    () => committees.some((item) => item.nextPaymentDueLabel.toLowerCase().includes("tomorrow")),
-    [committees]
+    () => liveCommittees.some((item) => (item.daysLeft ?? 0) <= 1),
+    [liveCommittees]
   );
 
   const upcomingCycles = useMemo(() => {
@@ -83,7 +100,7 @@ export function HomeScreen() {
       .sort((a, b) => (a.daysLeft ?? 0) - (b.daysLeft ?? 0))
       .slice(0, 4)
       .map((committee) => {
-        const daysLeft = Math.max(0, committee.daysLeft ?? 0);
+        const daysLeft = committee.daysLeft ?? 0;
         const tone = daysLeft <= 1 ? "danger" : daysLeft <= 3 ? "warning" : "info";
         const nextDue = committee.nextCycleDate
           ? new Date(committee.nextCycleDate).toLocaleDateString()
@@ -93,7 +110,7 @@ export function HomeScreen() {
           id: committee.id,
           title: committee.name,
           subtitle: `Cycle ${cycle} due ${nextDue}`,
-          meta: daysLeft === 0 ? "Due today" : `${daysLeft} days left`,
+          meta: dueStatusLabel(daysLeft),
           tone,
         };
       });
@@ -102,13 +119,21 @@ export function HomeScreen() {
   const liveAlerts = useMemo(() => {
     const alerts: Array<{ id: string; text: string; tone: "danger" | "warning" | "info" }> = [];
     liveCommittees.forEach((committee) => {
-      const daysLeft = Math.max(0, committee.daysLeft ?? 0);
+      const daysLeft = committee.daysLeft ?? 0;
       const status = (committee.status ?? "").toLowerCase();
       if (status.includes("paused")) {
         alerts.push({
           id: `${committee.id}-paused`,
           text: `${committee.name} is paused. Manager action is required.`,
           tone: "warning",
+        });
+        return;
+      }
+      if (daysLeft < 0) {
+        alerts.push({
+          id: `${committee.id}-overdue`,
+          text: `${committee.name} is overdue by ${Math.abs(daysLeft)} day${Math.abs(daysLeft) === 1 ? "" : "s"}.`,
+          tone: "danger",
         });
         return;
       }
@@ -197,6 +222,10 @@ export function HomeScreen() {
 
           <BalanceCard
             balance={balance}
+            lastSyncedLabel={walletSummaryLastSyncedLabel}
+            isStale={isWalletSummaryStale}
+            isRefreshing={walletSummaryQuery.isFetching}
+            onRefresh={() => walletSummaryQuery.refetch()}
             onPress={() =>
               navigation.navigate("ProfileTab", {
                 screen: "WalletMain",

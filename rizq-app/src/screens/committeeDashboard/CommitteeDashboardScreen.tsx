@@ -200,6 +200,50 @@ export function CommitteeDashboardScreen() {
       }),
     [dashboardQuery.data?.members, dashboardQuery.data?.payout_schedule, userId]
   );
+  const payoutReadiness = useMemo(() => {
+    const currentCycle =
+      dashboardQuery.data?.committee.current_cycle ?? activeCommittee?.currentCycle ?? 1;
+    const activeMembersCount = (dashboardQuery.data?.members ?? []).filter(
+      (m) => m.membership_status === "active"
+    ).length;
+    const paidContributorCount = new Set(
+      (historyQuery.data?.contributions ?? [])
+        .filter((item) => (item.cycle_number ?? 0) === currentCycle)
+        .map((item) => item.user_id)
+    ).size;
+    const currentTurnRow =
+      (dashboardQuery.data?.payout_schedule ?? []).find((row) => row.turn === currentCycle) ?? null;
+    const isCurrentUserTurn =
+      currentTurnRow != null &&
+      (currentTurnRow.is_current_user || Boolean(userId && currentTurnRow.member_id === userId));
+    const cycleDateMs = dashboardQuery.data?.committee.next_cycle_date
+      ? new Date(dashboardQuery.data.committee.next_cycle_date).getTime()
+      : null;
+    const cycleDateReached = cycleDateMs == null ? true : Date.now() >= cycleDateMs;
+    const alreadyClaimed = Boolean(currentTurnRow?.completed);
+    const poolReady = paidContributorCount >= Math.max(1, activeMembersCount);
+    const reasons: string[] = [];
+    if (alreadyClaimed) reasons.push("Already claimed");
+    if (!cycleDateReached) reasons.push("Cycle date not reached");
+    if (!isCurrentUserTurn) reasons.push("Not your turn");
+    if (!poolReady) {
+      const missing = Math.max(0, Math.max(1, activeMembersCount) - paidContributorCount);
+      reasons.push(`Waiting for ${missing} member(s)`);
+    }
+    return {
+      ready: reasons.length === 0,
+      reasons,
+      summary: `${paidContributorCount}/${Math.max(1, activeMembersCount)} paid in cycle ${currentCycle}`,
+    };
+  }, [
+    activeCommittee?.currentCycle,
+    dashboardQuery.data?.committee.current_cycle,
+    dashboardQuery.data?.committee.next_cycle_date,
+    dashboardQuery.data?.members,
+    dashboardQuery.data?.payout_schedule,
+    historyQuery.data?.contributions,
+    userId,
+  ]);
 
   const paymentMatrixData = useMemo(
     () => dashboardQuery.data?.payment_matrix ?? [],
@@ -600,6 +644,44 @@ export function CommitteeDashboardScreen() {
               });
             }}
           />
+          <GlassCard style={styles.payoutReadinessCard}>
+            <Text style={styles.payoutReadinessTitle}>Payout Readiness</Text>
+            <Text style={styles.payoutReadinessSub}>{payoutReadiness.summary}</Text>
+            <View style={styles.readinessBadgeRow}>
+              {payoutReadiness.ready ? (
+                <View style={[styles.readinessBadge, styles.readinessBadgeReady]}>
+                  <Text style={[styles.readinessBadgeText, styles.readinessBadgeTextReady]}>Ready to claim</Text>
+                </View>
+              ) : (
+                payoutReadiness.reasons.map((reason) => (
+                  <View key={reason} style={styles.readinessBadge}>
+                    <Text style={styles.readinessBadgeText}>{reason}</Text>
+                  </View>
+                ))
+              )}
+            </View>
+            <Pressable
+              style={[
+                styles.payoutReadinessBtn,
+                !payoutReadiness.ready && styles.payoutReadinessBtnSecondary,
+              ]}
+              onPress={() =>
+                navigation.navigate(
+                  payoutReadiness.ready ? "PayoutClaim" : "PayoutNotification",
+                  { committeeId: activeCommittee?.id }
+                )
+              }
+            >
+              <Text
+                style={[
+                  styles.payoutReadinessBtnText,
+                  !payoutReadiness.ready && styles.payoutReadinessBtnTextSecondary,
+                ]}
+              >
+                {payoutReadiness.ready ? "Claim payout now" : "View payout lock reasons"}
+              </Text>
+            </Pressable>
+          </GlassCard>
           {showManagerCollateralPrompt ? (
             <GlassCard style={styles.collateralPrompt}>
               <Text style={styles.collateralPromptTitle}>Manager collateral</Text>
@@ -902,4 +984,39 @@ const styles = StyleSheet.create({
   },
   collateralPromptBtnDisabled: { opacity: 0.55 },
   collateralPromptBtnText: { color: colors.textInverse, fontWeight: "700", fontSize: typography.bodySmall },
+  payoutReadinessCard: { padding: 14, gap: 8 },
+  payoutReadinessTitle: { color: colors.textPrimary, fontSize: typography.bodySmall, fontWeight: "800" },
+  payoutReadinessSub: { color: colors.textSecondary, fontSize: typography.caption },
+  readinessBadgeRow: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
+  readinessBadge: {
+    borderWidth: 1,
+    borderColor: "rgba(10,51,40,0.2)",
+    backgroundColor: "rgba(10,51,40,0.05)",
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    minHeight: 28,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  readinessBadgeReady: {
+    borderColor: "rgba(29,158,117,0.45)",
+    backgroundColor: "rgba(29,158,117,0.12)",
+  },
+  readinessBadgeText: { color: colors.textPrimary, fontSize: typography.caption, fontWeight: "700" },
+  readinessBadgeTextReady: { color: colors.brandGreenDim },
+  payoutReadinessBtn: {
+    marginTop: 4,
+    minHeight: 42,
+    borderRadius: radii.button,
+    backgroundColor: colors.brandGreen,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  payoutReadinessBtnSecondary: {
+    borderWidth: 1,
+    borderColor: "rgba(10,51,40,0.2)",
+    backgroundColor: "rgba(10,51,40,0.05)",
+  },
+  payoutReadinessBtnText: { color: colors.textInverse, fontWeight: "700", fontSize: typography.bodySmall },
+  payoutReadinessBtnTextSecondary: { color: colors.textPrimary },
 });

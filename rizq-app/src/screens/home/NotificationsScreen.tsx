@@ -32,8 +32,17 @@ export function NotificationsScreen() {
       const items: NotificationItem[] = [];
 
       committees.forEach((committee) => {
-        const daysLeft = Math.max(0, committee.daysLeft ?? 0);
-        if (daysLeft === 0) {
+        const daysLeft = committee.daysLeft ?? 0;
+        if (daysLeft < 0) {
+          items.push({
+            id: `${committee.id}-overdue`,
+            title: `${committee.name}: Overdue`,
+            message: `Contribution overdue by ${Math.abs(daysLeft)} day${Math.abs(daysLeft) === 1 ? "" : "s"}.`,
+            createdAt: Date.now() - 1_000,
+            tone: "danger",
+            committeeId: committee.id,
+          });
+        } else if (daysLeft === 0) {
           items.push({
             id: `${committee.id}-due-today`,
             title: `${committee.name}: Due today`,

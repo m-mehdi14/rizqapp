@@ -10,7 +10,7 @@ import { committeesRouter } from "./api/committees";
 import { nomineesRouter } from "./api/nominees";
 import { welfareRouter } from "./api/welfare";
 import { scheduleWeeklyCoaching } from "./jobs/weekly-coaching";
-import { scheduleMissedPaymentMonitor } from "./jobs/missed-payment-monitor";
+import { runMissedPaymentSweep, scheduleMissedPaymentMonitor } from "./jobs/missed-payment-monitor";
 import { syncCommitteeWebhookPayload } from "./solana/webhook-sync";
 
 const app = express();
@@ -51,6 +51,11 @@ async function main() {
     scheduleMissedPaymentMonitor();
   } catch (e) {
     console.warn("[jobs] missed payment monitor not scheduled:", e);
+  }
+  try {
+    await runMissedPaymentSweep();
+  } catch (e) {
+    console.warn("[jobs] missed payment initial sweep failed:", e);
   }
   app.listen(config.port, () => {
     console.log(`rizq-backend listening on :${config.port}`);

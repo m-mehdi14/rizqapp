@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Linking, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useNavigation, useRoute } from "@react-navigation/native";
 import type { NavigationProp, ParamListBase, RouteProp } from "@react-navigation/native";
@@ -10,6 +10,7 @@ import { GlassCard } from "../../components/GlassCard";
 import { ScreenShell } from "../../components/ScreenShell";
 import {
   fetchSolUsdcRate,
+  fetchWalletBalanceSummary,
   fetchWalletSolBalance,
   fetchWalletTransactions,
   type WalletTransactionRow,
@@ -80,9 +81,9 @@ export function WalletMainScreen() {
   const nav = useNavigation<NavigationProp<ParamListBase>>();
   const wallet = useAppStore((s) => s.wallet);
   const solBalanceLamports = useAppStore((s) => s.solBalanceLamports);
-  const committees = useAppStore((s) => s.committees);
   const { connectWeb3AuthWallet } = useWeb3AuthWallet();
   const [connectError, setConnectError] = useState<string | null>(null);
+  const [clockMs, setClockMs] = useState(Date.now());
   const txQuery = useQuery({
     queryKey: ["wallet-transactions", wallet],
     queryFn: () => fetchWalletTransactions(wallet as string),
@@ -93,32 +94,39 @@ export function WalletMainScreen() {
     queryFn: fetchSolUsdcRate,
     refetchInterval: 60_000,
   });
+  const summaryQuery = useQuery({
+    queryKey: ["wallet-balance-summary", wallet, "wallet-screen"],
+    queryFn: () => fetchWalletBalanceSummary(wallet as string),
+    enabled: Boolean(wallet),
+    refetchInterval: 20_000,
+  });
+  useEffect(() => {
+    const id = setInterval(() => setClockMs(Date.now()), 30_000);
+    return () => clearInterval(id);
+  }, []);
 
   const allTx = useMemo(() => (txQuery.data ? toWalletTx(txQuery.data) : []), [txQuery.data]);
   const txItems = allTx.slice(0, 2);
   const chainSol = Math.max(0, solBalanceLamports / 1_000_000_000);
   const solUsdcRate = solRateQuery.data ?? 0;
-  const netCommitteeUsdc = allTx.reduce((sum, tx) => {
-    const amountUsdc = tx.amountMicroUsdc / 1_000_000;
-    return tx.type === "Payout" ? sum + amountUsdc : sum - amountUsdc;
-  }, 0);
-  const committeeDeltaSol = solUsdcRate > 0 ? netCommitteeUsdc / solUsdcRate : 0;
-  const availableSol = Math.max(0, chainSol + committeeDeltaSol);
+  const summary = summaryQuery.data;
+  const lockedUsdcFromSummary = Number(summary?.locked_micro_usdc ?? 0) / 1_000_000;
+  const pendingUsdcFromSummary = Number(summary?.pending_payout_micro_usdc ?? 0) / 1_000_000;
+  const availableSol = Math.max(0, chainSol);
   const availableUsdc = availableSol * solUsdcRate;
-  const lockedSol =
-    committees.reduce(
-      (sum, committee) => sum + Math.max(0, committee.contributionLamports ?? 0) / 1_000_000_000,
-      0
-    ) || 0;
-  const lockedUsdc = lockedSol * solUsdcRate;
-  const pendingSol = Math.max(0, lockedSol - availableSol);
-  const pendingUsdc = pendingSol * solUsdcRate;
+  const lockedSol = solUsdcRate > 0 ? lockedUsdcFromSummary / solUsdcRate : 0;
+  const pendingSol = solUsdcRate > 0 ? pendingUsdcFromSummary / solUsdcRate : 0;
+  const lockedUsdc = lockedUsdcFromSummary;
+  const pendingUsdc = pendingUsdcFromSummary;
   const paidOutUsdc = allTx
     .filter((tx) => tx.type === "Payout")
     .reduce((sum, tx) => sum + tx.amountMicroUsdc / 1_000_000, 0);
   const contributedUsdc = allTx
     .filter((tx) => tx.type === "Contribution")
     .reduce((sum, tx) => sum + tx.amountMicroUsdc / 1_000_000, 0);
+  const summaryUpdatedAt = summaryQuery.dataUpdatedAt || 0;
+  const summaryAgeMs = summaryUpdatedAt > 0 ? Math.max(0, clockMs - summaryUpdatedAt) : Number.POSITIVE_INFINITY;
+  const isSummaryStale = summaryAgeMs > 75_000;
 
   return (
     <Layout
@@ -146,9 +154,18 @@ export function WalletMainScreen() {
           ≈ Locked ${lockedUsdc.toFixed(2)} USDC • Pending ${pendingUsdc.toFixed(2)} USDC
         </Text>
         <Text style={styles.balanceSub}>
-          Chain SOL {chainSol.toFixed(4)} • Committee adj {committeeDeltaSol >= 0 ? "+" : ""}
-          {committeeDeltaSol.toFixed(4)} SOL
+          Source: backend wallet summary + live chain SOL balance
         </Text>
+        <View style={styles.syncRow}>
+          <Text style={[styles.balanceSub, isSummaryStale && styles.staleText]}>
+            {summaryUpdatedAt > 0
+              ? `Last synced ${new Date(summaryUpdatedAt).toLocaleTimeString()}`
+              : "Not synced yet"}
+          </Text>
+          <Pressable style={styles.syncBtn} onPress={() => summaryQuery.refetch()} disabled={summaryQuery.isFetching}>
+            <Text style={styles.syncBtnText}>{summaryQuery.isFetching ? "Refreshing..." : "Refresh"}</Text>
+          </Pressable>
+        </View>
         <Text style={styles.balanceSub}>
           Committee history: Paid out ${paidOutUsdc.toFixed(2)} • Contributed ${contributedUsdc.toFixed(2)}
         </Text>
@@ -487,6 +504,19 @@ const styles = StyleSheet.create({
   balanceValue: { color: colors.brandGreen, fontSize: 36, fontWeight: "900", lineHeight: 40 },
   balanceSub: { color: colors.textSecondary, fontSize: typography.caption },
   breakdownRow: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 2 },
+  syncRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
+  staleText: { color: "#A15C1A" },
+  syncBtn: {
+    minHeight: 28,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "rgba(10,51,40,0.2)",
+    backgroundColor: "rgba(10,51,40,0.05)",
+    paddingHorizontal: 10,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  syncBtnText: { color: colors.textPrimary, fontSize: typography.caption, fontWeight: "700" },
   pill: {
     color: colors.textPrimary,
     borderRadius: 999,

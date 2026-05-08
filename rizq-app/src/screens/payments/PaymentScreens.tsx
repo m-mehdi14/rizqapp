@@ -355,14 +355,24 @@ export function PayoutNotificationScreen() {
   ).size;
   const currentTurnRow =
     (dashboardQuery.data?.payout_schedule ?? []).find((row) => row.turn === currentCycle) ?? null;
+  const cycleDateMs = dashboardQuery.data?.committee.next_cycle_date
+    ? new Date(dashboardQuery.data.committee.next_cycle_date).getTime()
+    : null;
+  const cycleDateReached = cycleDateMs == null ? true : Date.now() >= cycleDateMs;
+  const alreadyClaimed = Boolean(currentTurnRow?.completed);
   const isCurrentUserTurn =
     currentTurnRow != null &&
     (currentTurnRow.is_current_user || Boolean(userId && currentTurnRow.member_id === userId));
   const poolReady = paidContributorCount >= Math.max(1, activeMembersCount);
-  const payoutReady = isCurrentUserTurn && poolReady;
-  const notReadyReason = !isCurrentUserTurn
-    ? `Not your payout turn yet (cycle ${currentCycle}).`
-    : `Waiting for all active members: ${paidContributorCount}/${Math.max(1, activeMembersCount)} paid.`;
+  const payoutReasons: string[] = [];
+  if (alreadyClaimed) payoutReasons.push("Already claimed for this cycle.");
+  if (!cycleDateReached) payoutReasons.push("Cycle date not reached.");
+  if (!isCurrentUserTurn) payoutReasons.push(`Not your payout turn yet (cycle ${currentCycle}).`);
+  if (!poolReady) {
+    const missing = Math.max(0, Math.max(1, activeMembersCount) - paidContributorCount);
+    payoutReasons.push(`Waiting for ${missing} member(s) to pay (${paidContributorCount}/${Math.max(1, activeMembersCount)} paid).`);
+  }
+  const payoutReady = payoutReasons.length === 0;
   const grossSolEquivalent =
     (solRateQuery.data ?? 0) > 0 ? grossUsdc / (solRateQuery.data ?? 1) : 0;
   return (
@@ -386,7 +396,9 @@ export function PayoutNotificationScreen() {
       {!payoutReady ? (
         <GlassCard style={styles.warningCard}>
           <WarningCircle color={colors.warning} size={18} />
-          <Text style={styles.warningBody}>{notReadyReason}</Text>
+          {payoutReasons.map((reason) => (
+            <Text key={reason} style={styles.warningBody}>{`• ${reason}`}</Text>
+          ))}
         </GlassCard>
       ) : null}
       <Pressable
@@ -454,14 +466,32 @@ export function PayoutClaimScreen() {
   ).size;
   const currentTurnRow =
     (dashboardQuery.data?.payout_schedule ?? []).find((row) => row.turn === currentCycle) ?? null;
+  const cycleDateMs = dashboardQuery.data?.committee.next_cycle_date
+    ? new Date(dashboardQuery.data.committee.next_cycle_date).getTime()
+    : null;
+  const cycleDateReached = cycleDateMs == null ? true : Date.now() >= cycleDateMs;
+  const alreadyClaimed = Boolean(
+    currentTurnRow?.completed ||
+      (historyQuery.data?.payouts ?? []).some(
+        (item) =>
+          Number(item.cycle_number ?? -1) === currentCycle &&
+          Boolean(wallet) &&
+          item.recipient_wallet === wallet
+      )
+  );
   const isCurrentUserTurn =
     currentTurnRow != null &&
     (currentTurnRow.is_current_user || Boolean(dashboardQuery.data?.committee.current_user_id && currentTurnRow.member_id === dashboardQuery.data?.committee.current_user_id));
   const poolReady = paidContributorCount >= Math.max(1, activeMembersCount);
-  const payoutReady = isCurrentUserTurn && poolReady;
-  const payoutLockReason = !isCurrentUserTurn
-    ? `Not your payout turn for cycle ${currentCycle}.`
-    : `Waiting for all active members: ${paidContributorCount}/${Math.max(1, activeMembersCount)} paid.`;
+  const payoutReasons: string[] = [];
+  if (alreadyClaimed) payoutReasons.push("Already claimed for this cycle.");
+  if (!cycleDateReached) payoutReasons.push("Cycle date not reached.");
+  if (!isCurrentUserTurn) payoutReasons.push(`Not your payout turn for cycle ${currentCycle}.`);
+  if (!poolReady) {
+    const missing = Math.max(0, Math.max(1, activeMembersCount) - paidContributorCount);
+    payoutReasons.push(`Waiting for ${missing} member(s) to pay (${paidContributorCount}/${Math.max(1, activeMembersCount)} paid).`);
+  }
+  const payoutReady = payoutReasons.length === 0;
   const grossSolEquivalent =
     (solRateQuery.data ?? 0) > 0 ? grossUsdc / (solRateQuery.data ?? 1) : 0;
   const feeSolEquivalent =
@@ -544,7 +574,9 @@ export function PayoutClaimScreen() {
       {!payoutReady ? (
         <GlassCard style={styles.warningCard}>
           <WarningCircle color={colors.warning} size={18} />
-          <Text style={styles.warningBody}>{payoutLockReason}</Text>
+          {payoutReasons.map((reason) => (
+            <Text key={reason} style={styles.warningBody}>{`• ${reason}`}</Text>
+          ))}
         </GlassCard>
       ) : null}
       {submitError ? <Text style={styles.errorText}>{submitError}</Text> : null}
@@ -554,7 +586,7 @@ export function PayoutClaimScreen() {
           : "No manual signature required. Tap Claim when wallet is connected."}
       </Text>
       <Pressable
-        style={styles.primaryBtn}
+        style={[styles.primaryBtn, (!payoutReady || claimMutation.isPending || !wallet || !committee || !hasEnoughFeeSol) && styles.primaryBtnDisabled]}
         disabled={
           claimMutation.isPending ||
           !wallet ||
